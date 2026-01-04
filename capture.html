@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Inventory Capture</title>
+
+  <!-- Supabase JS (v2) -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+      background: #f8fafc;
+      margin: 0;
+      padding: 16px;
+      color: #0f172a;
+    }
+
+    h2 { margin: 10px 0 12px 0; }
+
+    .card {
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 14px;
+      margin-top: 12px;
+      box-shadow: 0 1px 2px rgba(15,23,42,0.06);
+    }
+
+    label {
+      display: block;
+      margin-top: 10px;
+      color: #475569;
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    input, textarea, button {
+      width: 100%;
+      padding: 12px;
+      margin-top: 6px;
+      font-size: 16px;
+      box-sizing: border-box;
+      border-radius: 10px;
+      border: 1px solid #cbd5e1;
+      outline: none;
+    }
+
+    input:focus, textarea:focus {
+      border-color: #1e3a8a;
+      box-shadow: 0 0 0 3px rgba(30,58,138,0.15);
+    }
+
+    textarea { min-height: 90px; resize: vertical; }
+
+    button {
+      background: #1e3a8a;
+      color: white;
+      border: none;
+      border-radius: 10px;
+      margin-top: 14px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+
+    .secondary {
+      background: #fff;
+      color: #1e3a8a;
+      border: 1px solid #1e3a8a;
+      margin-top: 10px;
+    }
+
+    .hidden { display: none; }
+
+    .success, .error {
+      padding: 10px;
+      margin-top: 12px;
+      border-radius: 10px;
+      text-align: center;
+      font-weight: 700;
+    }
+
+    .success { background: #16a34a; color: #fff; }
+    .error { background: #dc2626; color: #fff; }
+
+    .small {
+      color: #64748b;
+      font-size: 12px;
+      margin-top: 10px;
+      line-height: 1.4;
+    }
+
+    .version {
+      padding: 8px;
+      border: 2px dashed #0f172a;
+      border-radius: 10px;
+      margin: 10px 0 12px 0;
+      font-weight: 800;
+      background: #fff;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="version">VERSION: v4-fingerprint-01</div>
+
+  <h2>Inventory Capture</h2>
+
+  <!-- Login -->
+  <div id="loginCard" class="card">
+    <label for="emailInput">Email</label>
+    <input id="emailInput" type="email" placeholder="you@example.com" autocomplete="email" />
+
+    <label for="passwordInput">Password</label>
+    <input id="passwordInput" type="password" placeholder="Password" autocomplete="current-password" />
+
+    <button id="signInBtn" type="button">Sign In</button>
+
+    <div class="small">
+      Tip: if you just deployed, refresh once or add <b>?v=123</b> to the URL to bust cache.
+    </div>
+
+    <div id="loginMsg"></div>
+  </div>
+
+  <!-- Capture -->
+  <div id="captureCard" class="card hidden">
+    <label for="containerInput">Container Code</label>
+    <input id="containerInput" placeholder="e.g. TOTE0076" />
+
+    <label for="photoInput">Photo (required)</label>
+    <input id="photoInput" type="file" accept="image/*" capture="environment" />
+
+    <label for="descInput">Description</label>
+    <textarea id="descInput" placeholder="Item description"></textarea>
+
+    <button id="saveBtn" type="button">Save Item</button>
+    <button id="logoutBtn" type="button" class="secondary">Logout</button>
+
+    <div id="captureMsg"></div>
+  </div>
+
+  <!-- Single, safe script (DOM ready + element validation) -->
+  <script>
+  document.addEventListener("DOMContentLoaded", () => {
+    // Visible debug banner (always shows at top)
+    const debugBar = document.createElement("div");
+    debugBar.style.cssText =
+      "padding:10px;border-radius:10px;margin:12px 0;font-weight:800;";
+    debugBar.textContent = "BOOT: DOM ready…";
+    debugBar.style.background = "#f59e0b";
+    debugBar.style.color = "#0f172a";
+    document.body.insertBefore(debugBar, document.body.firstChild);
+
+    const fail = (msg) => {
+      debugBar.textContent = "BOOT FAIL: " + msg;
+      debugBar.style.background = "#dc2626";
+      debugBar.style.color = "#fff";
+      throw new Error(msg);
+    };
+
+    // Confirm Supabase library is present
+    if (!window.supabase || !window.supabase.createClient) {
+      fail("Supabase JS library not loaded.");
+    }
+
+    // ✅ CONFIG: add your anon public key
+    const SUPABASE_URL = "https://htmqdzvepyhpklrykjgh.supabase.co";
+    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh0bXFkenZlcHlocGtscnlramdoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc0NzAzMjEsImV4cCI6MjA4MzA0NjMyMX0.nC_2KfGq6LGUhYjNQTXMFM_7Q_P0MflXEhV_GP1D16M";
+
+    const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    // Grab DOM nodes and verify IDs exist
+    const ids = [
+      "loginCard","captureCard",
+      "emailInput","passwordInput","signInBtn","loginMsg",
+      "containerInput","photoInput","descInput","saveBtn","logoutBtn","captureMsg"
+    ];
+
+    const el = {};
+    for (const id of ids) {
+      el[id] = document.getElementById(id);
+      if (!el[id]) fail(`Missing element id="${id}". (HTML and JS IDs must match)`);
+    }
+
+    // Utility
+    const escapeHtml = (str) =>
+      String(str).replace(/[&<>"']/g, s => ({
+        "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"
+      }[s]));
+
+    const showLoginError = (text) => {
+      el.loginMsg.innerHTML = `<div class="error">${escapeHtml(text)}</div>`;
+    };
+
+    const showCaptureError = (text) => {
+      el.captureMsg.innerHTML = `<div class="error">${escapeHtml(text)}</div>`;
+    };
+
+    const showCaptureSuccess = (text) => {
+      el.captureMsg.innerHTML = `<div class="success">${escapeHtml(text)}</div>`;
+      setTimeout(() => el.captureMsg.innerHTML = "", 1200);
+    };
+
+    async function refreshUI() {
+      const { data } = await sb.auth.getSession();
+      if (data?.session) {
+        el.loginCard.classList.add("hidden");
+        el.captureCard.classList.remove("hidden");
+      } else {
+        el.captureCard.classList.add("hidden");
+        el.loginCard.classList.remove("hidden");
+      }
+    }
+
+    // If any runtime error happens later, show it in banner
+    window.addEventListener("error", (e) => {
+      debugBar.textContent = "JS ERROR: " + (e?.message || "unknown error");
+      debugBar.style.background = "#dc2626";
+      debugBar.style.color = "#fff";
+    });
+
+    window.addEventListener("unhandledrejection", (e) => {
+      debugBar.textContent = "PROMISE ERROR: " + (e?.reason?.message || String(e?.reason));
+      debugBar.style.background = "#dc2626";
+      debugBar.style.color = "#fff";
+    });
+
+    // Attach handlers
+    el.signInBtn.addEventListener("click", async () => {
+      el.signInBtn.disabled = true;
+      el.loginMsg.innerHTML = "";
+      try {
+        const email = el.emailInput.value.trim();
+        const password = el.passwordInput.value;
+
+        if (!email || !password) {
+          showLoginError("Email and password are required.");
+          return;
+        }
+
+        const { error } = await sb.auth.signInWithPassword({ email, password });
+        if (error) {
+          showLoginError(error.message);
+          return;
+        }
+
+        await refreshUI();
+      } catch (e) {
+        showLoginError(e?.message || String(e));
+      } finally {
+        el.signInBtn.disabled = false;
+      }
+    });
+
+    el.logoutBtn.addEventListener("click", async () => {
+      await sb.auth.signOut();
+      await refreshUI();
+    });
+
+    el.saveBtn.addEventListener("click", async () => {
+      el.saveBtn.disabled = true;
+      el.captureMsg.innerHTML = "";
+      try {
+        const containerCode = el.containerInput.value.trim();
+        const description = el.descInput.value.trim();
+        const file = el.photoInput.files?.[0];
+
+        if (!containerCode) { showCaptureError("Container code is required."); return; }
+        if (!file) { showCaptureError("Photo is required."); return; }
+        if (!description) { showCaptureError("Description is required."); return; }
+
+        const safeName = (file.name || "photo.jpg").replace(/[^\w.\-]/g, "_");
+        const filePath = `${containerCode}/${Date.now()}_${safeName}`;
+
+        const up = await sb.storage.from("item-photos").upload(filePath, file, { upsert: false });
+        if (up.error) { showCaptureError("Upload failed: " + up.error.message); return; }
+
+        const ins = await sb.from("items").insert({
+          container_code: containerCode,
+          item_description: description,
+          photo_path: filePath
+        });
+        if (ins.error) { showCaptureError("Save failed: " + ins.error.message); return; }
+
+        el.descInput.value = "";
+        el.photoInput.value = "";
+        showCaptureSuccess("Saved ✓");
+      } catch (e) {
+        showCaptureError(e?.message || String(e));
+      } finally {
+        el.saveBtn.disabled = false;
+      }
+    });
+
+    // If we reached here, bootstrap succeeded
+    debugBar.textContent = "BOOT OK ✅ Handlers attached ✅";
+    debugBar.style.background = "#16a34a";
+    debugBar.style.color = "#fff";
+
+    // Initialize UI based on existing session
+    refreshUI();
+  });
+  </script>
+</body>
+</html>
