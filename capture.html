@@ -59,46 +59,34 @@
 </div>
 
 <script>
-  // ====== DEBUG: show if JS is running and capture errors ======
+document.addEventListener("DOMContentLoaded", () => {
+
+  // ====== DEBUG BANNER ======
   const debugBar = document.createElement("div");
   debugBar.style.cssText = "padding:10px;border-radius:10px;margin:12px 0;font-weight:700;";
-  debugBar.textContent = "JS starting…";
-  debugBar.style.background = "#f59e0b";
-  debugBar.style.color = "#0f172a";
+  debugBar.textContent = "JS running…";
+  debugBar.style.background = "#16a34a";
+  debugBar.style.color = "#fff";
   document.body.insertBefore(debugBar, document.body.firstChild);
 
   window.addEventListener("error", (e) => {
     debugBar.textContent = "JS ERROR: " + (e?.message || "unknown error");
     debugBar.style.background = "#dc2626";
-    debugBar.style.color = "#fff";
   });
 
-  window.addEventListener("unhandledrejection", (e) => {
-    debugBar.textContent = "PROMISE ERROR: " + (e?.reason?.message || String(e?.reason));
-    debugBar.style.background = "#dc2626";
-    debugBar.style.color = "#fff";
-  });
-
-  // ====== CONFIG: replace your anon key ======
+  // ====== CONFIG ======
   const SUPABASE_URL = "https://htmqdzvepyhpklrykjgh.supabase.co";
   const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh0bXFkenZlcHlocGtscnlramdoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc0NzAzMjEsImV4cCI6MjA4MzA0NjMyMX0.nC_2KfGq6LGUhYjNQTXMFM_7Q_P0MflXEhV_GP1D16M";
 
-  // ====== verify supabase library loaded ======
   if (!window.supabase || !window.supabase.createClient) {
-    debugBar.textContent = "Supabase library NOT loaded (cdn blocked or failed).";
+    debugBar.textContent = "Supabase JS not loaded";
     debugBar.style.background = "#dc2626";
-    debugBar.style.color = "#fff";
-    // Stop here so the page doesn't silently fail
-    throw new Error("Supabase JS library missing");
+    return;
   }
-
-  debugBar.textContent = "JS running ✅  Supabase loaded ✅";
-  debugBar.style.background = "#16a34a";
-  debugBar.style.color = "#fff";
 
   const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-  // DOM refs
+  // ====== DOM REFERENCES (SAFE NOW) ======
   const loginCard = document.getElementById("loginCard");
   const captureCard = document.getElementById("captureCard");
   const emailInput = document.getElementById("emailInput");
@@ -122,15 +110,13 @@
   function showLoginError(text) {
     loginMsg.innerHTML = `<div class="error">${escapeHtml(text)}</div>`;
   }
-  function showCaptureMsgSuccess(text) {
+
+  function showSuccess(text) {
     captureMsg.innerHTML = `<div class="success">${escapeHtml(text)}</div>`;
     setTimeout(() => captureMsg.innerHTML = "", 1200);
   }
-  function showCaptureMsgError(text) {
-    captureMsg.innerHTML = `<div class="error">${escapeHtml(text)}</div>`;
-  }
 
-  async function refreshUIFromSession() {
+  async function refreshUI() {
     const { data } = await sb.auth.getSession();
     if (data?.session) {
       loginCard.classList.add("hidden");
@@ -141,28 +127,21 @@
     }
   }
 
+  // ====== EVENTS ======
   signInBtn.addEventListener("click", async () => {
-    loginMsg.innerHTML = "";
     signInBtn.disabled = true;
+    loginMsg.innerHTML = "";
 
     try {
-      const email = emailInput.value.trim();
-      const password = passwordInput.value;
+      const { error } = await sb.auth.signInWithPassword({
+        email: emailInput.value.trim(),
+        password: passwordInput.value
+      });
 
-      if (!email || !password) {
-        showLoginError("Email and password are required.");
-        return;
-      }
-
-      const { error } = await sb.auth.signInWithPassword({ email, password });
-      if (error) {
-        showLoginError(error.message);
-        return;
-      }
-
-      await refreshUIFromSession();
+      if (error) throw error;
+      await refreshUI();
     } catch (e) {
-      showLoginError(e?.message || String(e));
+      showLoginError(e.message);
     } finally {
       signInBtn.disabled = false;
     }
@@ -170,51 +149,42 @@
 
   logoutBtn.addEventListener("click", async () => {
     await sb.auth.signOut();
-    await refreshUIFromSession();
+    await refreshUI();
   });
 
   saveBtn.addEventListener("click", async () => {
     saveBtn.disabled = true;
-    captureMsg.innerHTML = "";
 
     try {
-      const containerCode = containerInput.value.trim();
-      const description = descInput.value.trim();
-      const file = photoInput.files?.[0];
+      const file = photoInput.files[0];
+      if (!file) throw new Error("Photo required");
 
-      if (!containerCode) throw new Error("Container code is required.");
-      if (!file) throw new Error("Photo is required.");
-      if (!description) throw new Error("Description is required.");
+      const path = `${containerInput.value}/${Date.now()}_${file.name}`;
+      const up = await sb.storage.from("item-photos").upload(path, file);
+      if (up.error) throw up.error;
 
-      const safeName = (file.name || "photo.jpg").replace(/[^\w.\-]/g, "_");
-      const filePath = `${containerCode}/${Date.now()}_${safeName}`;
-
-      const { error: uploadError } = await sb.storage
-        .from("item-photos")
-        .upload(filePath, file, { upsert: false });
-
-      if (uploadError) throw new Error("Upload failed: " + uploadError.message);
-
-      const { error: insertError } = await sb.from("items").insert({
-        container_code: containerCode,
-        item_description: description,
-        photo_path: filePath
+      const ins = await sb.from("items").insert({
+        container_code: containerInput.value.trim(),
+        item_description: descInput.value.trim(),
+        photo_path: path
       });
-
-      if (insertError) throw new Error("Save failed: " + insertError.message);
+      if (ins.error) throw ins.error;
 
       descInput.value = "";
       photoInput.value = "";
-      showCaptureMsgSuccess("Saved ✓");
+      showSuccess("Saved ✓");
     } catch (e) {
-      showCaptureMsgError(e?.message || String(e));
+      captureMsg.innerHTML = `<div class="error">${escapeHtml(e.message)}</div>`;
     } finally {
       saveBtn.disabled = false;
     }
   });
 
-  refreshUIFromSession();
+  refreshUI();
+});
 </script>
+
 
 </body>
 </html>
+
