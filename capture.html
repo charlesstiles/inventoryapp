@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Inventory Capture</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont;
+      background: #f8fafc;
+      margin: 0;
+      padding: 16px;
+    }
+    h2 { margin-top: 0; }
+    input, textarea, button {
+      width: 100%;
+      padding: 12px;
+      margin-top: 8px;
+      font-size: 16px;
+    }
+    button {
+      background: #1e3a8a;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      margin-top: 16px;
+    }
+    .hidden { display: none; }
+    .success {
+      background: #16a34a;
+      color: white;
+      padding: 8px;
+      margin-top: 12px;
+      border-radius: 4px;
+      text-align: center;
+    }
+  </style>
+</head>
+
+<body>
+
+<h2>Inventory Capture</h2>
+
+<div id="login">
+  <input id="email" type="email" placeholder="Email" />
+  <input id="password" type="password" placeholder="Password" />
+  <button onclick="login()">Sign In</button>
+</div>
+
+<div id="capture" class="hidden">
+  <input id="container" placeholder="Container Code (e.g. TOTE0076)" />
+  <input id="photo" type="file" accept="image/*" capture="environment" />
+  <textarea id="desc" placeholder="Item description"></textarea>
+  <button onclick="saveItem()">Save Item</button>
+  <div id="msg"></div>
+</div>
+
+<script>
+  // 🔴 REPLACE THESE TWO VALUES
+  const SUPABASE_URL = "https://htmqdzvepyhpklrykjgh.supabase.co";
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh0bXFkenZlcHlocGtscnlramdoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc0NzAzMjEsImV4cCI6MjA4MzA0NjMyMX0.nC_2KfGq6LGUhYjNQTXMFM_7Q_P0MflXEhV_GP1D16M";
+
+  const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  async function login() {
+    const email = email.value;
+    const password = password.value;
+
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) return alert(error.message);
+
+    loginDiv.style.display = "none";
+    capture.classList.remove("hidden");
+  }
+
+  async function saveItem() {
+    const containerCode = container.value.trim();
+    const description = desc.value.trim();
+    const file = photo.files[0];
+
+    if (!containerCode || !description || !file) {
+      alert("Container, photo, and description are required.");
+      return;
+    }
+
+    const filePath = `${Date.now()}_${file.name}`;
+
+    const { error: uploadError } = await supabase
+      .storage
+      .from("item-photos")
+      .upload(filePath, file);
+
+    if (uploadError) return alert(uploadError.message);
+
+    const { error: insertError } = await supabase
+      .from("items")
+      .insert({
+        container_code: containerCode,
+        item_description: description,
+        photo_path: filePath
+      });
+
+    if (insertError) return alert(insertError.message);
+
+    desc.value = "";
+    photo.value = "";
+    msg.innerHTML = "<div class='success'>Saved ✓</div>";
+    setTimeout(() => msg.innerHTML = "", 1500);
+  }
+</script>
+
+</body>
+</html>
