@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Container Contents</title>
+
+  <!-- Supabase JS (v2) -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <!-- Quagga2 for barcode scanning (supports Code 39) -->
+  <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.8.4/dist/quagga.min.js"></script>
+
+  <!-- Shared config -->
+  <script src="./config.js"></script>
+
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+      background: #f8fafc;
+      margin: 0;
+      padding: 16px;
+      color: #0f172a;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
+    h1 { font-size: 20px; margin: 0; }
+
+    .nav {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    a.link-btn {
+      display: inline-block;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid #1e3a8a;
+      color: #1e3a8a;
+      text-decoration: none;
+      font-weight: 800;
+      background: #fff;
+      white-space: nowrap;
+    }
+
+    .card {
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 14px;
+      margin-top: 12px;
+      box-shadow: 0 1px 2px rgba(15,23,42,0.06);
+    }
+
+    label {
+      display: block;
+      margin-top: 10px;
+      color: #475569;
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    input, button {
+      width: 100%;
+      padding: 12px;
+      margin-top: 6px;
+      font-size: 16px;
+      border-radius: 10px;
+      border: 1px solid #cbd5e1;
+      box-sizing: border-box;
+      outline: none;
+    }
+
+    input:focus {
+      border-color: #1e3a8a;
+      box-shadow: 0 0 0 3px rgba(30,58,138,0.15);
+    }
+
+    .btn {
+      background: #1e3a8a;
+      color: #fff;
+      border: none;
+      font-weight: 800;
+      cursor: pointer;
+      margin-top: 12px;
+    }
+    .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+    .btn-secondary {
+      background: #fff;
+      color: #1e3a8a;
+      border: 1px solid #1e3a8a;
+      font-weight: 800;
+      cursor: pointer;
+      margin-top: 12px;
+    }
+
+    .row2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .row3 {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .hidden { display: none; }
+
+    .success, .error, .info {
+      padding: 10px;
+      margin-top: 12px;
+      border-radius: 10px;
+      text-align: center;
+      font-weight: 800;
+      color: #fff;
+    }
+    .success { background: #16a34a; }
+    .error { background: #dc2626; }
+    .info { background: #0ea5e9; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 14px;
+      font-size: 14px;
+    }
+
+    th, td {
+      padding: 10px;
+      border-bottom: 1px solid #e2e8f0;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: #f1f5f9;
+      font-weight: 800;
+    }
+
+    tr:hover { background: #f8fafc; }
+
+    .muted { color: #64748b; font-size: 12px; }
+    .countpill {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: #e2e8f0;
+      color: #0f172a;
+      font-weight: 900;
+      font-size: 12px;
+      margin-left: 8px;
+      vertical-align: middle;
+    }
+
+    /* Scanner overlay */
+    .overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.85);
+      display: none;
+      z-index: 9999;
+      padding: 16px;
+      box-sizing: border-box;
+    }
+
+    .overlay-inner {
+      width: 100%;
+      max-width: 720px;
+      margin: 0 auto;
+      background: #0b1220;
+      border: 1px solid rgba(226,232,240,0.2);
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+    }
+
+    .overlay-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 12px;
+      background: #0f172a;
+      color: #fff;
+      font-weight: 800;
+    }
+
+    .overlay-header button {
+      width: auto;
+      margin-top: 0;
+      padding: 10px 12px;
+      border-radius: 10px;
+    }
+
+    #scannerArea {
+      position: relative;
+      width: 100%;
+      height: 70vh;
+      background: #000;
+      overflow: hidden;
+    }
+    #scannerArea video,
+    #scannerArea canvas {
+      position: absolute !important;
+      top: 0; left: 0;
+      width: 100% !important;
+      height: 100% !important;
+      object-fit: contain !important;
+    }
+
+    .scan-guide {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      pointer-events: none;
+      z-index: 5;
+    }
+    .scan-frame {
+      width: 80%;
+      height: 35%;
+      border: 3px solid rgba(255,255,255,0.85);
+      border-radius: 14px;
+      box-shadow: 0 0 0 2000px rgba(0,0,0,0.25);
+    }
+
+    .overlay-footer {
+      padding: 12px;
+      background: #0f172a;
+      color: #e2e8f0;
+      font-size: 13px;
+      line-height: 1.35;
+    }
+    .mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-weight: 700;
+    }
+  </style>
+</head>
+
+<body>
+  <header>
+    <h1>Container Contents <span id="countPill" class="countpill hidden">0</span></h1>
+    <div class="nav">
+      <a class="link-btn" href="./capture.html">Capture</a>
+      <a class="link-btn" href="./search.html">Search</a>
+    </div>
+  </header>
+
+  <!-- Login -->
+  <div id="loginCard" class="card">
+    <label for="emailInput">Email</label>
+    <input id="emailInput" type="email" placeholder="you@example.com" autocomplete="email" />
+
+    <label for="passwordInput">Password</label>
+    <input id="passwordInput" type="password" placeholder="Password" autocomplete="current-password" />
+
+    <button id="signInBtn" type="button" class="btn">Sign In</button>
+
+    <div id="loginMsg"></div>
+  </div>
+
+  <!-- Main -->
+  <div id="mainCard" class="card hidden">
+    <label for="containerInput">Container Code</label>
+    <input id="containerInput" placeholder="e.g. TOTE0076" />
+
+    <div class="row3">
+      <button id="scanBtn" type="button" class="btn-secondary">Scan Container</button>
+      <button id="loadBtn" type="button" class="btn">Load Contents</button>
+      <button id="logoutBtn" type="button" class="btn-secondary">Logout</button>
+    </div>
+
+    <div id="msg"></div>
+
+    <table id="table" style="display:none;">
+      <thead>
+        <tr>
+          <th>Description</th>
+          <th>Created</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <!-- Scanner Overlay -->
+  <div id="scannerOverlay" class="overlay" aria-hidden="true">
+    <div class="overlay-inner">
+      <div class="overlay-header">
+        <div>Scan Code 39 Container Label</div>
+        <button id="scannerCloseBtn" class="btn-secondary" type="button">Close</button>
+      </div>
+
+      <div id="scannerArea">
+        <div class="scan-guide"><div class="scan-frame"></div></div>
+      </div>
+
+      <div class="overlay-footer">
+        Hold the barcode inside the frame. When detected, it will fill the container code.
+        <div style="margin-top:8px;">Last scan: <span id="lastScan" class="mono">—</span></div>
+        <div id="scanErr" style="margin-top:8px;color:#fca5a5;font-weight:800;"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      // Config
+      if (!window.APP_CONFIG || !window.APP_CONFIG.SUPABASE_URL || !window.APP_CONFIG.SUPABASE_ANON_KEY) {
+        alert("Missing config.js or SUPABASE settings.");
+        return;
+      }
+      const { SUPABASE_URL, SUPABASE_ANON_KEY } = window.APP_CONFIG;
+
+      const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+      // DOM
+      const loginCard = document.getElementById("loginCard");
+      const mainCard = document.getElementById("mainCard");
+      const emailInput = document.getElementById("emailInput");
+      const passwordInput = document.getElementById("passwordInput");
+      const signInBtn = document.getElementById("signInBtn");
+      const loginMsg = document.getElementById("loginMsg");
+
+      const containerInput = document.getElementById("containerInput");
+      const scanBtn = document.getElementById("scanBtn");
+      const loadBtn = document.getElementById("loadBtn");
+      const logoutBtn = document.getElementById("logoutBtn");
+      const msg = document.getElementById("msg");
+
+      const table = document.getElementById("table");
+      const tbody = table.querySelector("tbody");
+      const countPill = document.getElementById("countPill");
+
+      const scannerOverlay = document.getElementById("scannerOverlay");
+      const scannerCloseBtn = document.getElementById("scannerCloseBtn");
+      const lastScan = document.getElementById("lastScan");
+      const scanErr = document.getElementById("scanErr");
+
+      const escapeHtml = (str) =>
+        String(str).replace(/[&<>"']/g, s => ({
+          "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"
+        }[s]));
+
+      function show(type, text) {
+        msg.innerHTML = `<div class="${type}">${escapeHtml(text)}</div>`;
+      }
+
+      function clearTable() {
+        tbody.innerHTML = "";
+        table.style.display = "none";
+        countPill.classList.add("hidden");
+        countPill.textContent = "0";
+      }
+
+      async function refreshUI() {
+        const { data } = await sb.auth.getSession();
+        if (data?.session) {
+          loginCard.classList.add("hidden");
+          mainCard.classList.remove("hidden");
+          containerInput.focus();
+        } else {
+          mainCard.classList.add("hidden");
+          loginCard.classList.remove("hidden");
+          emailInput.focus();
+        }
+      }
+
+      // Login
+      signInBtn.addEventListener("click", async () => {
+        signInBtn.disabled = true;
+        loginMsg.innerHTML = "";
+        try {
+          const email = emailInput.value.trim();
+          const password = passwordInput.value;
+          if (!email || !password) {
+            loginMsg.innerHTML = `<div class="error">Email and password are required.</div>`;
+            return;
+          }
+          const { error } = await sb.auth.signInWithPassword({ email, password });
+          if (error) {
+            loginMsg.innerHTML = `<div class="error">${escapeHtml(error.message)}</div>`;
+            return;
+          }
+          await refreshUI();
+        } finally {
+          signInBtn.disabled = false;
+        }
+      });
+
+      // Logout
+      logoutBtn.addEventListener("click", async () => {
+        await stopScannerIfRunning();
+        await sb.auth.signOut();
+        clearTable();
+        msg.innerHTML = "";
+        await refreshUI();
+      });
+
+      // Load contents
+      loadBtn.addEventListener("click", async () => {
+        loadBtn.disabled = true;
+        msg.innerHTML = "";
+        clearTable();
+
+        try {
+          const code = containerInput.value.trim();
+          if (!code) { show("error", "Enter or scan a container code."); return; }
+
+          const { data, error } = await sb
+            .from("items")
+            .select("item_description, created_at")
+            .eq("container_code", code)
+            .order("created_at", { ascending: false })
+            .limit(500);
+
+          if (error) { show("error", error.message); return; }
+
+          if (!data || data.length === 0) {
+            show("info", `No items found in ${code}.`);
+            return;
+          }
+
+          for (const row of data) {
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+              <td>${escapeHtml(row.item_description || "")}</td>
+              <td class="muted">${new Date(row.created_at).toLocaleString()}</td>
+            `;
+            tbody.appendChild(tr);
+          }
+
+          table.style.display = "table";
+          countPill.textContent = String(data.length);
+          countPill.classList.remove("hidden");
+          show("success", `Loaded ${data.length} item(s) in ${code}.`);
+        } catch (e) {
+          show("error", e?.message || String(e));
+        } finally {
+          loadBtn.disabled = false;
+        }
+      });
+
+      // Press Enter to load
+      containerInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") loadBtn.click();
+      });
+
+      // ----------------------------
+      // Scanner (Code 39) - stable preview + Full ASCII lowercase decode
+      // ----------------------------
+      let scannerRunning = false;
+      let lastDetectedAt = 0;
+      let didDecode = false;
+
+      function openScanner() {
+        scanErr.textContent = "";
+        lastScan.textContent = "Scanning…";
+        didDecode = false;
+        scannerOverlay.style.display = "block";
+        scannerOverlay.setAttribute("aria-hidden", "false");
+        startScanner();
+      }
+
+      async function closeScanner() {
+        await stopScannerIfRunning();
+        scannerOverlay.style.display = "none";
+        scannerOverlay.setAttribute("aria-hidden", "true");
+      }
+
+      scannerCloseBtn.addEventListener("click", closeScanner);
+      scannerOverlay.addEventListener("click", (e) => {
+        if (e.target === scannerOverlay) closeScanner();
+      });
+
+      scanBtn.addEventListener("click", () => openScanner());
+
+      function decodeCode39FullASCII(s) {
+        // +A..+Z => a..z
+        return String(s || "").replace(/\+([A-Z])/g, (_, ch) => ch.toLowerCase());
+      }
+
+      function normalizeCode39(value) {
+        const raw = String(value || "").trim().replace(/^\*+|\*+$/g, "");
+        return decodeCode39FullASCII(raw);
+      }
+
+      function getCameraConstraints() {
+        return {
+          facingMode: { ideal: "environment" },
+          aspectRatio: { ideal: 4 / 3 },
+          width:  { ideal: 1280 },
+          height: { ideal: 960 }
+        };
+      }
+
+      async function forceMinZoomIfSupported() {
+        try {
+          const ca = Quagga.CameraAccess;
+          const track = (ca && typeof ca.getActiveTrack === "function") ? ca.getActiveTrack() : null;
+          if (!track) return;
+
+          const caps = track.getCapabilities ? track.getCapabilities() : null;
+          if (!caps || !caps.zoom) return;
+
+          const minZoom = (caps.zoom.min != null) ? caps.zoom.min : 1;
+          await track.applyConstraints({ advanced: [{ zoom: minZoom }] });
+        } catch (_) {}
+      }
+
+      function startScanner() {
+        if (scannerRunning) return;
+
+        scanErr.textContent = "";
+        lastScan.textContent = "Scanning…";
+
+        const config = {
+          inputStream: {
+            type: "LiveStream",
+            target: document.querySelector("#scannerArea"),
+            constraints: getCameraConstraints()
+          },
+          locator: { patchSize: "x-large", halfSample: false },
+          numOfWorkers: 0,
+          frequency: 10,
+          decoder: { readers: ["code_39_reader"] },
+          locate: true,
+          area: { top: "20%", right: "5%", left: "5%", bottom: "20%" }
+        };
+
+        Quagga.init(config, (err) => {
+          if (err) {
+            scanErr.textContent = "Scanner init failed: " + (err.message || String(err));
+            return;
+          }
+          Quagga.start();
+          scannerRunning = true;
+          setTimeout(() => { forceMinZoomIfSupported(); }, 250);
+        });
+
+        Quagga.onProcessed((result) => {
+          if (!scannerRunning || didDecode) return;
+          const hasCandidates = !!(result && result.boxes && result.boxes.length);
+          lastScan.textContent = hasCandidates ? "Scanning… (candidate detected)" : "Scanning…";
+          if (hasCandidates) scanErr.textContent = "";
+        });
+
+        Quagga.onDetected(onDetected);
+
+        setTimeout(() => {
+          if (scannerRunning && !didDecode) {
+            scanErr.textContent =
+              "No decode yet. Move closer, center barcode, tilt to reduce glare, or increase label size.";
+          }
+        }, 7000);
+      }
+
+      async function stopScannerIfRunning() {
+        if (!scannerRunning) return;
+        try {
+          Quagga.offDetected(onDetected);
+          Quagga.offProcessed();
+          Quagga.stop();
+        } catch (_) {}
+        scannerRunning = false;
+      }
+
+      async function onDetected(result) {
+        const now = Date.now();
+        if (now - lastDetectedAt < 900) return;
+        lastDetectedAt = now;
+
+        const code = normalizeCode39(result?.codeResult?.code);
+        if (!code) return;
+
+        didDecode = true;
+        lastScan.textContent = code;
+        containerInput.value = code;
+
+        await closeScanner();
+        show("info", "Container set: " + code);
+      }
+
+      // Init
+      refreshUI();
+    });
+  </script>
+</body>
+</html>
