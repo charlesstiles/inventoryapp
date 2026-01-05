@@ -5,83 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Container Contents</title>
 
-  <!-- Supabase JS (v2) -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
-  <!-- Quagga2 for Code 39 scanning -->
   <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.8.4/dist/quagga.min.js"></script>
 
-  <!-- Shared config + navigation -->
   <script src="./config.js"></script>
   <script src="./navigation.js"></script>
 
   <style>
-    /* --- Navigation (responsive) --- */
-#navBar { display: flex; justify-content: flex-end; }
-
-.navWrap { position: relative; display: flex; align-items: center; gap: 10px; }
-
-/* Desktop inline links */
-.navInline { display: flex; gap: 10px; align-items: center; }
-
-/* Hamburger button (mobile) */
-.navBurger {
-  display: none;            /* hidden on desktop */
-  width: auto;
-  padding: 8px 10px;
-  border-radius: 10px;
-  border: 1px solid #1e3a8a;
-  background: #fff;
-  color: #1e3a8a;
-  font-weight: 900;
-  cursor: pointer;
-}
-
-/* Links (small, consistent) */
-.navLink {
-  display: inline-block;
-  padding: 8px 10px;
-  border-radius: 10px;
-  border: 1px solid #1e3a8a;
-  background: #fff;
-  color: #1e3a8a;
-  text-decoration: none;
-  font-weight: 900;
-  font-size: 14px;
-  line-height: 1;
-}
-
-.navLink.active {
-  background: #1e3a8a;
-  color: #fff;
-}
-
-/* Dropdown menu (mobile) */
-.navMenu {
-  position: absolute;
-  top: 44px;
-  right: 0;
-  min-width: 160px;
-  background: #fff;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  box-shadow: 0 10px 20px rgba(15,23,42,0.18);
-  padding: 8px;
-  display: grid;
-  gap: 8px;
-  z-index: 2000;
-}
-
-/* Utility */
-.hidden { display: none !important; }
-
-/* Responsive breakpoint */
-@media (max-width: 520px) {
-  .navInline { display: none; }   /* hide inline on mobile */
-  .navBurger { display: inline-block; } /* show hamburger */
-  .navLink { width: 100%; }       /* menu links fill */
-}
-
     body {
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
       background: #f8fafc;
@@ -99,6 +29,55 @@
     }
 
     h1 { font-size: 20px; margin: 0; }
+
+    /* --- Navigation (responsive hamburger) --- */
+    #navBar { display: flex; justify-content: flex-end; }
+    .navWrap { position: relative; display: flex; align-items: center; gap: 10px; }
+    .navInline { display: flex; gap: 10px; align-items: center; }
+    .navBurger {
+      display: none;
+      width: auto;
+      padding: 8px 10px;
+      border-radius: 10px;
+      border: 1px solid #1e3a8a;
+      background: #fff;
+      color: #1e3a8a;
+      font-weight: 900;
+      cursor: pointer;
+    }
+    .navLink {
+      display: inline-block;
+      padding: 8px 10px;
+      border-radius: 10px;
+      border: 1px solid #1e3a8a;
+      background: #fff;
+      color: #1e3a8a;
+      text-decoration: none;
+      font-weight: 900;
+      font-size: 14px;
+      line-height: 1;
+    }
+    .navLink.active { background: #1e3a8a; color: #fff; }
+    .navMenu {
+      position: absolute;
+      top: 44px;
+      right: 0;
+      min-width: 160px;
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      box-shadow: 0 10px 20px rgba(15,23,42,0.18);
+      padding: 8px;
+      display: grid;
+      gap: 8px;
+      z-index: 2000;
+    }
+    .hidden { display: none !important; }
+    @media (max-width: 520px) {
+      .navInline { display: none; }
+      .navBurger { display: inline-block; }
+      .navLink { width: 100%; }
+    }
 
     .card {
       background: #fff;
@@ -133,19 +112,15 @@
       box-shadow: 0 0 0 3px rgba(30,58,138,0.15);
     }
 
-    button {
-      font-weight: 800;
-      cursor: pointer;
-    }
-
     .btn {
       background: #1e3a8a;
       color: #fff;
       border: none;
+      font-weight: 900;
+      cursor: pointer;
       margin-top: 12px;
     }
 
-    /* Strong disabled appearance */
     .btn:disabled {
       background: #cbd5e1;
       color: #64748b;
@@ -158,6 +133,8 @@
       background: #fff;
       color: #1e3a8a;
       border: 1px solid #1e3a8a;
+      font-weight: 900;
+      cursor: pointer;
       margin-top: 12px;
     }
 
@@ -168,13 +145,11 @@
       margin-top: 10px;
     }
 
-    .hidden { display: none; }
-
     .success, .error, .info {
       padding: 10px;
       margin-top: 12px;
       border-radius: 10px;
-      font-weight: 800;
+      font-weight: 900;
       text-align: center;
       color: #fff;
     }
@@ -196,27 +171,22 @@
       vertical-align: top;
     }
 
-    th {
-      background: #f1f5f9;
-      font-weight: 900;
-    }
-
+    th { background: #f1f5f9; font-weight: 900; }
     tr:hover { background: #f8fafc; }
+    tr.clickable { cursor: pointer; }
 
     .muted { color: #64748b; font-size: 12px; }
 
-    /* Thumbnail */
     .thumb {
       width: 44px;
       height: 44px;
       border-radius: 10px;
       object-fit: cover;
       border: 1px solid #e2e8f0;
-      cursor: pointer;
       background: #f1f5f9;
     }
 
-    /* Photo modal */
+    /* Modal */
     .modal {
       position: fixed;
       inset: 0;
@@ -317,7 +287,6 @@
       border-radius: 10px;
     }
 
-    /* Stable preview + contain to avoid crop */
     #scannerArea {
       position: relative;
       width: 100%;
@@ -433,13 +402,11 @@
       </div>
 
       <div id="scannerArea">
-        <div class="scan-guide">
-          <div class="scan-frame"></div>
-        </div>
+        <div class="scan-guide"><div class="scan-frame"></div></div>
       </div>
 
       <div class="overlay-footer">
-        Hold the barcode inside the frame. When detected, it will fill the container code.
+        Hold barcode inside the frame. It will auto-fill the container code.
         <div style="margin-top:8px;">Last scan: <span id="lastScan" class="mono">—</span></div>
         <div id="scanErr" style="margin-top:8px;color:#fca5a5;font-weight:900;"></div>
       </div>
@@ -448,16 +415,17 @@
 
   <script>
     document.addEventListener("DOMContentLoaded", () => {
-      // Nav
       if (window.APP_NAV) window.APP_NAV.render("navBar");
 
-      // Config
       if (!window.APP_CONFIG || !window.APP_CONFIG.SUPABASE_URL || !window.APP_CONFIG.SUPABASE_ANON_KEY) {
-        alert("Missing config.js or SUPABASE settings.");
+        alert("Missing config.js settings.");
         return;
       }
       const { SUPABASE_URL, SUPABASE_ANON_KEY } = window.APP_CONFIG;
       const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+      const BUCKET = "item-photos";
+      const signedUrlCache = new Map(); // photo_path -> signedUrl
 
       // DOM
       const loginCard = document.getElementById("loginCard");
@@ -476,19 +444,16 @@
       const table = document.getElementById("table");
       const tbody = table.querySelector("tbody");
 
-      const scannerOverlay = document.getElementById("scannerOverlay");
-      const scannerCloseBtn = document.getElementById("scannerCloseBtn");
-      const lastScan = document.getElementById("lastScan");
-      const scanErr = document.getElementById("scanErr");
-
       const photoModal = document.getElementById("photoModal");
       const modalCloseBtn = document.getElementById("modalCloseBtn");
       const modalImg = document.getElementById("modalImg");
       const modalTitle = document.getElementById("modalTitle");
       const modalMeta = document.getElementById("modalMeta");
 
-      const BUCKET = "item-photos";
-      const signedUrlCache = new Map(); // photo_path -> signedUrl
+      const scannerOverlay = document.getElementById("scannerOverlay");
+      const scannerCloseBtn = document.getElementById("scannerCloseBtn");
+      const lastScan = document.getElementById("lastScan");
+      const scanErr = document.getElementById("scanErr");
 
       const escapeHtml = (str) =>
         String(str).replace(/[&<>"']/g, s => ({
@@ -521,7 +486,7 @@
         }
       }
 
-      // --- Auth ---
+      // Auth
       signInBtn.addEventListener("click", async () => {
         signInBtn.disabled = true;
         loginMsg.innerHTML = "";
@@ -553,22 +518,21 @@
         await refreshUI();
       });
 
-      // --- Enable/disable Show button ---
+      // Enable/disable Show button
       containerInput.addEventListener("input", updateShowButtonState);
       containerInput.addEventListener("change", updateShowButtonState);
       updateShowButtonState();
 
-      // Enter to show
+      // Enter triggers show
       containerInput.addEventListener("keydown", (e) => {
         if (e.key === "Enter" && !showBtn.disabled) showBtn.click();
       });
 
-      // --- Signed URL helper ---
+      // Signed URL helper
       async function getSignedUrl(photoPath) {
         if (!photoPath) return null;
         if (signedUrlCache.has(photoPath)) return signedUrlCache.get(photoPath);
 
-        // 1 hour signed url
         const { data, error } = await sb.storage.from(BUCKET).createSignedUrl(photoPath, 60 * 60);
         if (error) return null;
 
@@ -576,7 +540,7 @@
         return data.signedUrl;
       }
 
-      // --- Modal ---
+      // Modal
       function openModal({ title, meta, imgUrl }) {
         modalTitle.textContent = title || "Photo";
         modalMeta.textContent = meta || "";
@@ -592,11 +556,29 @@
       }
 
       modalCloseBtn.addEventListener("click", closeModal);
-      photoModal.addEventListener("click", (e) => {
-        if (e.target === photoModal) closeModal();
-      });
+      photoModal.addEventListener("click", (e) => { if (e.target === photoModal) closeModal(); });
 
-      // --- Show contents ---
+      // Lazy-load thumbnails via IntersectionObserver
+      let thumbObserver = null;
+      function ensureThumbObserver() {
+        if (thumbObserver) return;
+        thumbObserver = new IntersectionObserver(async (entries) => {
+          for (const entry of entries) {
+            if (!entry.isIntersecting) continue;
+            const img = entry.target;
+            const path = img.getAttribute("data-photo-path");
+            if (!path) { thumbObserver.unobserve(img); continue; }
+            if (img.getAttribute("data-loaded") === "1") { thumbObserver.unobserve(img); continue; }
+
+            const url = await getSignedUrl(path);
+            if (url) img.src = url;
+            img.setAttribute("data-loaded", "1");
+            thumbObserver.unobserve(img);
+          }
+        }, { root: null, rootMargin: "200px", threshold: 0.01 });
+      }
+
+      // Show contents
       showBtn.addEventListener("click", async () => {
         showBtn.disabled = true;
         msg.innerHTML = "";
@@ -606,58 +588,69 @@
           const code = containerInput.value.trim();
           if (!code) { show("error", "Enter or scan a container code."); return; }
 
-          // Pull photo_path so we can preview
           const { data, error } = await sb
             .from("items")
             .select("item_description, created_at, photo_path")
             .eq("container_code", code)
             .order("created_at", { ascending: false })
-            .limit(200);
+            .limit(500);
 
           if (error) { show("error", error.message); return; }
+          if (!data || data.length === 0) { show("info", `No items found in ${code}.`); return; }
 
-          if (!data || data.length === 0) {
-            show("info", `No items found in ${code}.`);
-            return;
-          }
+          ensureThumbObserver();
 
-          // Render rows; thumbnail uses signed URL
           for (const row of data) {
             const tr = document.createElement("tr");
+            tr.className = "clickable";
 
             const tdPhoto = document.createElement("td");
             const tdDesc = document.createElement("td");
             const tdCreated = document.createElement("td");
 
-            // Description / created
             tdDesc.textContent = row.item_description || "";
             tdCreated.className = "muted";
             tdCreated.textContent = new Date(row.created_at).toLocaleString();
 
-            // Thumbnail
-            if (row.photo_path) {
+            let photoPath = row.photo_path || "";
+
+            if (photoPath) {
               const img = document.createElement("img");
               img.className = "thumb";
               img.alt = "Item photo";
+              img.setAttribute("data-photo-path", photoPath);
+              img.setAttribute("data-loaded", "0");
+              tdPhoto.appendChild(img);
 
-              // Load signed URL for thumb
-              const thumbUrl = await getSignedUrl(row.photo_path);
-              if (thumbUrl) img.src = thumbUrl;
+              // Observe for lazy-load
+              thumbObserver.observe(img);
+            } else {
+              tdPhoto.textContent = "—";
+              tdPhoto.className = "muted";
+            }
 
-              img.addEventListener("click", async () => {
-                // Reuse cached signed URL (or refresh if missing)
-                const fullUrl = signedUrlCache.get(row.photo_path) || await getSignedUrl(row.photo_path);
+            // Row-click opens modal (not just thumbnail)
+            tr.addEventListener("click", async () => {
+              if (!photoPath) return;
+              const fullUrl = signedUrlCache.get(photoPath) || await getSignedUrl(photoPath);
+              openModal({
+                title: row.item_description || "Item Photo",
+                meta: `Container: ${code} • ${new Date(row.created_at).toLocaleString()}`,
+                imgUrl: fullUrl || ""
+              });
+            });
+
+            tdPhoto.addEventListener("click", (e) => { e.stopPropagation(); });
+            // If clicking directly on image, also open modal
+            if (photoPath) {
+              tdPhoto.addEventListener("click", async () => {
+                const fullUrl = signedUrlCache.get(photoPath) || await getSignedUrl(photoPath);
                 openModal({
                   title: row.item_description || "Item Photo",
                   meta: `Container: ${code} • ${new Date(row.created_at).toLocaleString()}`,
                   imgUrl: fullUrl || ""
                 });
               });
-
-              tdPhoto.appendChild(img);
-            } else {
-              tdPhoto.textContent = "—";
-              tdPhoto.className = "muted";
             }
 
             tr.appendChild(tdPhoto);
@@ -667,7 +660,7 @@
           }
 
           table.classList.remove("hidden");
-          show("success", `${data.length} item(s) loaded for ${code}. Tap a thumbnail to view.`);
+          show("success", `${data.length} item(s) loaded for ${code}. Tap a row to view photo.`);
         } catch (e) {
           show("error", e?.message || String(e));
         } finally {
@@ -682,8 +675,11 @@
       let lastDetectedAt = 0;
       let didDecode = false;
 
+      scanBtn.addEventListener("click", () => openScanner());
+      scannerCloseBtn.addEventListener("click", () => closeScanner());
+      scannerOverlay.addEventListener("click", (e) => { if (e.target === scannerOverlay) closeScanner(); });
+
       function decodeCode39FullASCII(s) {
-        // +A..+Z => a..z
         return String(s || "").replace(/\+([A-Z])/g, (_, ch) => ch.toLowerCase());
       }
 
@@ -717,7 +713,6 @@
         scanErr.textContent = "";
         lastScan.textContent = "Scanning…";
         didDecode = false;
-
         scannerOverlay.style.display = "block";
         scannerOverlay.setAttribute("aria-hidden", "false");
         startScanner();
@@ -729,18 +724,8 @@
         scannerOverlay.setAttribute("aria-hidden", "true");
       }
 
-      scannerCloseBtn.addEventListener("click", closeScanner);
-      scannerOverlay.addEventListener("click", (e) => {
-        if (e.target === scannerOverlay) closeScanner();
-      });
-
-      scanBtn.addEventListener("click", () => openScanner());
-
       function startScanner() {
         if (scannerRunning) return;
-
-        scanErr.textContent = "";
-        lastScan.textContent = "Scanning…";
 
         const config = {
           inputStream: {
