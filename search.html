@@ -11,6 +11,9 @@
   <!-- Shared config (add config.js at repo root) -->
   <script src="./config.js"></script>
 
+    <!-- Shared navigation (add navigation.js at repo root) -->
+  <script src="./navigation.js"></script>
+
   <style>
     body {
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
@@ -126,7 +129,7 @@
 <body>
   <header>
     <h1>Inventory Search</h1>
-    <a class="link-btn" href="./capture.html">Capture</a>
+    <div id="navBar"></div>
   </header>
 
   <div class="card">
@@ -164,6 +167,8 @@
       const searchMsg = document.getElementById("searchMsg");
       const resultsTable = document.getElementById("resultsTable");
       const tbody = resultsTable.querySelector("tbody");
+
+      window.APP_NAV.render("navBar");
 
       function showError(msg) { searchMsg.innerHTML = `<div class="error">${msg}</div>`; }
       function showInfo(msg) { searchMsg.innerHTML = `<div class="info">${msg}</div>`; }
