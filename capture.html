@@ -11,6 +11,9 @@
   <!-- Quagga2 for barcode scanning (supports Code 39) -->
   <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.8.4/dist/quagga.min.js"></script>
 
+  <!-- Shared config (add config.js at repo root) -->
+  <script src="./config.js"></script>
+
   <style>
     body {
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
@@ -171,7 +174,7 @@
       border-radius: 10px;
     }
 
-    /* ✅ IMPORTANT: use height-based layout + force contain so the preview doesn't crop/zoom */
+    /* ✅ Preview stability + "contain" to prevent crop/zoom */
     #scannerArea {
       position: relative;
       width: 100%;
@@ -186,7 +189,7 @@
       top: 0; left: 0;
       width: 100% !important;
       height: 100% !important;
-      object-fit: contain !important; /* prevents crop/zoom */
+      object-fit: contain !important;
     }
 
     .scan-guide {
@@ -239,7 +242,7 @@
     <button id="signInBtn" type="button" class="btn">Sign In</button>
 
     <div class="small">
-      Tip: if you just deployed, refresh once or add <b>?v=123</b> to the URL to bust cache.
+      Tip: after deploying, open with <b>?v=123</b> to bust cache.
     </div>
 
     <div id="loginMsg"></div>
@@ -291,9 +294,12 @@
 
   <script>
     document.addEventListener("DOMContentLoaded", () => {
-      // ✅ CONFIG: paste your CURRENT anon public key (NOT secret/service role)
-      const SUPABASE_URL = "https://htmqdzvepyhpklrykjgh.supabase.co";
-      const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh0bXFkenZlcHlocGtscnlramdoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc0NzAzMjEsImV4cCI6MjA4MzA0NjMyMX0.nC_2KfGq6LGUhYjNQTXMFM_7Q_P0MflXEhV_GP1D16M";
+      // ---- Shared config ----
+      if (!window.APP_CONFIG || !window.APP_CONFIG.SUPABASE_URL || !window.APP_CONFIG.SUPABASE_ANON_KEY) {
+        alert("Missing config.js or SUPABASE settings. Ensure config.js exists and is loaded.");
+        return;
+      }
+      const { SUPABASE_URL, SUPABASE_ANON_KEY } = window.APP_CONFIG;
 
       if (!window.supabase || !window.supabase.createClient) {
         alert("Supabase JS library failed to load. Check your network and refresh.");
@@ -330,7 +336,7 @@
 
       const escapeHtml = (str) =>
         String(str).replace(/[&<>"']/g, s => ({
-          "&":"&amp;","<":"&lt;",">":"&gt;", "\"":"&quot;","'":"&#39;"
+          "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"
         }[s]));
 
       const showLoginError = (text) => {
@@ -405,7 +411,7 @@
         showCaptureInfo("Enter/scan a new container.");
       });
 
-      // Save item (with auto-create container)
+      // Save item (auto-create container)
       saveBtn.addEventListener("click", async () => {
         saveBtn.disabled = true;
         captureMsg.innerHTML = "";
@@ -419,7 +425,7 @@
           if (!file) { showCaptureError("Photo is required."); return; }
           if (!description) { showCaptureError("Description is required."); return; }
 
-          // 1) Ensure container exists (auto-create / upsert)
+          // Ensure container exists
           const upsertContainer = await sb
             .from("containers")
             .upsert({ container_code: containerCode }, { onConflict: "container_code" });
@@ -429,7 +435,7 @@
             return;
           }
 
-          // 2) Upload photo
+          // Upload photo
           const safeName = (file.name || "photo.jpg").replace(/[^\w.\-]/g, "_");
           const filePath = `${containerCode}/${Date.now()}_${safeName}`;
 
@@ -442,7 +448,7 @@
             return;
           }
 
-          // 3) Insert item row
+          // Insert item
           const ins = await sb.from("items").insert({
             container_code: containerCode,
             item_description: description,
@@ -454,7 +460,7 @@
             return;
           }
 
-          // Success: keep container, clear photo+desc for next item
+          // Reset for next item
           descInput.value = "";
           photoInput.value = "";
           showCaptureSuccess("Saved ✓");
@@ -467,7 +473,7 @@
       });
 
       // ----------------------------
-      // Scanner (Code 39) - tuned + fixes for Android "snap zoom" + Full ASCII lowercase decode
+      // Scanner (Code 39) - stable preview + lowercase (Full ASCII) decode
       // ----------------------------
       let scannerRunning = false;
       let lastDetectedAt = 0;
@@ -493,24 +499,20 @@
       scannerOverlay.addEventListener("click", (e) => {
         if (e.target === scannerOverlay) closeScanner();
       });
-
       scanContainerBtn.addEventListener("click", () => openScanner());
 
       function decodeCode39FullASCII(s) {
-        // Minimal Code 39 Full ASCII decode needed for lowercase:
-        // +A..+Z => a..z  (fixes A+A-1234 => Aa-1234)
+        // +A..+Z => a..z (fixes A+A-1234 => Aa-1234)
         return String(s || "").replace(/\+([A-Z])/g, (_, ch) => ch.toLowerCase());
       }
 
       function normalizeCode39(value) {
-        const raw = String(value || "")
-          .trim()
-          .replace(/^\*+|\*+$/g, "");
+        const raw = String(value || "").trim().replace(/^\*+|\*+$/g, "");
         // If you want to force ALL container codes uppercase, append .toUpperCase()
         return decodeCode39FullASCII(raw);
       }
 
-      // ✅ Use moderate 4:3 resolution to reduce cropping/“snap zoom” on many Android devices
+      // 4:3 tends to reduce weird crop/snap-zoom on many Android devices
       function getCameraConstraints() {
         return {
           facingMode: { ideal: "environment" },
@@ -520,7 +522,7 @@
         };
       }
 
-      // ✅ If browser exposes zoom capability, force it to minimum after start.
+      // If browser exposes zoom capability, force minimum after start
       async function forceMinZoomIfSupported() {
         try {
           const ca = Quagga.CameraAccess;
@@ -532,9 +534,7 @@
 
           const minZoom = (caps.zoom.min != null) ? caps.zoom.min : 1;
           await track.applyConstraints({ advanced: [{ zoom: minZoom }] });
-        } catch (_) {
-          // Some browsers ignore/forbid zoom constraints; that's fine.
-        }
+        } catch (_) { /* ignore */ }
       }
 
       function startScanner() {
@@ -549,22 +549,12 @@
             target: document.querySelector("#scannerArea"),
             constraints: getCameraConstraints()
           },
-          locator: {
-            patchSize: "x-large",
-            halfSample: false
-          },
+          locator: { patchSize: "x-large", halfSample: false },
           numOfWorkers: 0,
           frequency: 10,
           decoder: { readers: ["code_39_reader"] },
           locate: true,
-
-          // Wider scan region for reliability; we can tighten later for speed.
-          area: {
-            top: "20%",
-            right: "5%",
-            left: "5%",
-            bottom: "20%"
-          }
+          area: { top: "20%", right: "5%", left: "5%", bottom: "20%" }
         };
 
         Quagga.init(config, (err) => {
@@ -572,25 +562,16 @@
             scanErr.textContent = "Scanner init failed: " + (err.message || String(err));
             return;
           }
-
           Quagga.start();
           scannerRunning = true;
-
-          // Let camera settle, then try forcing minimum zoom.
           setTimeout(() => { forceMinZoomIfSupported(); }, 250);
         });
 
         Quagga.onProcessed((result) => {
-          if (!scannerRunning) return;
-          if (didDecode) return;
-
+          if (!scannerRunning || didDecode) return;
           const hasCandidates = !!(result && result.boxes && result.boxes.length);
-          if (hasCandidates) {
-            lastScan.textContent = "Scanning… (candidate detected)";
-            scanErr.textContent = "";
-          } else {
-            lastScan.textContent = "Scanning…";
-          }
+          lastScan.textContent = hasCandidates ? "Scanning… (candidate detected)" : "Scanning…";
+          if (hasCandidates) scanErr.textContent = "";
         });
 
         Quagga.onDetected(onDetected);
@@ -598,32 +579,27 @@
         setTimeout(() => {
           if (scannerRunning && !didDecode) {
             scanErr.textContent =
-              "No decode yet. Move closer, center barcode in frame, tilt to reduce glare, or increase label size.";
+              "No decode yet. Move closer, center barcode, tilt to reduce glare, or increase label size.";
           }
         }, 7000);
       }
 
       async function stopScannerIfRunning() {
         if (!scannerRunning) return;
-
         try {
           Quagga.offDetected(onDetected);
           Quagga.offProcessed();
           Quagga.stop();
-        } catch (_) {
-          // ignore
-        } finally {
-          scannerRunning = false;
-        }
+        } catch (_) { /* ignore */ }
+        scannerRunning = false;
       }
 
       async function onDetected(result) {
         const now = Date.now();
-        if (now - lastDetectedAt < 900) return; // debounce
+        if (now - lastDetectedAt < 900) return;
         lastDetectedAt = now;
 
-        const raw = result?.codeResult?.code;
-        const code = normalizeCode39(raw);
+        const code = normalizeCode39(result?.codeResult?.code);
         if (!code) return;
 
         didDecode = true;
@@ -641,4 +617,3 @@
   </script>
 </body>
 </html>
-
