@@ -5,82 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Inventory Search</title>
 
-  <!-- Supabase JS v2 -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
-  <!-- Shared config (add config.js at repo root) -->
   <script src="./config.js"></script>
-
-    <!-- Shared navigation (add navigation.js at repo root) -->
   <script src="./navigation.js"></script>
 
   <style>
-    /* --- Navigation (responsive) --- */
-#navBar { display: flex; justify-content: flex-end; }
-
-.navWrap { position: relative; display: flex; align-items: center; gap: 10px; }
-
-/* Desktop inline links */
-.navInline { display: flex; gap: 10px; align-items: center; }
-
-/* Hamburger button (mobile) */
-.navBurger {
-  display: none;            /* hidden on desktop */
-  width: auto;
-  padding: 8px 10px;
-  border-radius: 10px;
-  border: 1px solid #1e3a8a;
-  background: #fff;
-  color: #1e3a8a;
-  font-weight: 900;
-  cursor: pointer;
-}
-
-/* Links (small, consistent) */
-.navLink {
-  display: inline-block;
-  padding: 8px 10px;
-  border-radius: 10px;
-  border: 1px solid #1e3a8a;
-  background: #fff;
-  color: #1e3a8a;
-  text-decoration: none;
-  font-weight: 900;
-  font-size: 14px;
-  line-height: 1;
-}
-
-.navLink.active {
-  background: #1e3a8a;
-  color: #fff;
-}
-
-/* Dropdown menu (mobile) */
-.navMenu {
-  position: absolute;
-  top: 44px;
-  right: 0;
-  min-width: 160px;
-  background: #fff;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  box-shadow: 0 10px 20px rgba(15,23,42,0.18);
-  padding: 8px;
-  display: grid;
-  gap: 8px;
-  z-index: 2000;
-}
-
-/* Utility */
-.hidden { display: none !important; }
-
-/* Responsive breakpoint */
-@media (max-width: 520px) {
-  .navInline { display: none; }   /* hide inline on mobile */
-  .navBurger { display: inline-block; } /* show hamburger */
-  .navLink { width: 100%; }       /* menu links fill */
-}
-
     body {
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
       background: #f8fafc;
@@ -99,17 +29,53 @@
 
     h1 { font-size: 20px; margin: 0; }
 
-    a.link-btn {
-      display: inline-block;
-      padding: 10px 12px;
+    /* --- Navigation (responsive hamburger) --- */
+    #navBar { display: flex; justify-content: flex-end; }
+    .navWrap { position: relative; display: flex; align-items: center; gap: 10px; }
+    .navInline { display: flex; gap: 10px; align-items: center; }
+    .navBurger {
+      display: none;
+      width: auto;
+      padding: 8px 10px;
       border-radius: 10px;
       border: 1px solid #1e3a8a;
+      background: #fff;
+      color: #1e3a8a;
+      font-weight: 900;
+      cursor: pointer;
+    }
+    .navLink {
+      display: inline-block;
+      padding: 8px 10px;
+      border-radius: 10px;
+      border: 1px solid #1e3a8a;
+      background: #fff;
       color: #1e3a8a;
       text-decoration: none;
-      font-weight: 800;
+      font-weight: 900;
+      font-size: 14px;
+      line-height: 1;
+    }
+    .navLink.active { background: #1e3a8a; color: #fff; }
+    .navMenu {
+      position: absolute;
+      top: 44px;
+      right: 0;
+      min-width: 160px;
       background: #fff;
-      text-align: center;
-      white-space: nowrap;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      box-shadow: 0 10px 20px rgba(15,23,42,0.18);
+      padding: 8px;
+      display: grid;
+      gap: 8px;
+      z-index: 2000;
+    }
+    .hidden { display: none !important; }
+    @media (max-width: 520px) {
+      .navInline { display: none; }
+      .navBurger { display: inline-block; }
+      .navLink { width: 100%; }
     }
 
     .card {
@@ -148,7 +114,7 @@
     button {
       background: #1e3a8a;
       color: #fff;
-      font-weight: 800;
+      font-weight: 900;
       border: none;
       cursor: pointer;
       margin-top: 12px;
@@ -172,7 +138,7 @@
 
     th {
       background: #f1f5f9;
-      font-weight: 800;
+      font-weight: 900;
     }
 
     tr:hover { background: #f8fafc; }
@@ -183,7 +149,7 @@
       padding: 10px;
       margin-top: 12px;
       border-radius: 10px;
-      font-weight: 800;
+      font-weight: 900;
       text-align: center;
       color: #fff;
     }
@@ -220,12 +186,13 @@
 
   <script>
     document.addEventListener("DOMContentLoaded", () => {
+      if (window.APP_NAV) window.APP_NAV.render("navBar");
+
       if (!window.APP_CONFIG || !window.APP_CONFIG.SUPABASE_URL || !window.APP_CONFIG.SUPABASE_ANON_KEY) {
-        alert("Missing config.js or SUPABASE settings. Ensure config.js exists and is loaded.");
+        alert("Missing config.js settings.");
         return;
       }
       const { SUPABASE_URL, SUPABASE_ANON_KEY } = window.APP_CONFIG;
-
       const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
       const searchInput = document.getElementById("searchInput");
@@ -234,14 +201,9 @@
       const resultsTable = document.getElementById("resultsTable");
       const tbody = resultsTable.querySelector("tbody");
 
-      window.APP_NAV.render("navBar");
-
       function showError(msg) { searchMsg.innerHTML = `<div class="error">${msg}</div>`; }
       function showInfo(msg) { searchMsg.innerHTML = `<div class="info">${msg}</div>`; }
-      function clearResults() {
-        tbody.innerHTML = "";
-        resultsTable.style.display = "none";
-      }
+      function clearResults() { tbody.innerHTML = ""; resultsTable.style.display = "none"; }
 
       async function runSearch() {
         searchBtn.disabled = true;
@@ -249,11 +211,7 @@
         clearResults();
 
         const term = searchInput.value.trim();
-        if (!term) {
-          showError("Enter a search term.");
-          searchBtn.disabled = false;
-          return;
-        }
+        if (!term) { showError("Enter a search term."); searchBtn.disabled = false; return; }
 
         try {
           const { data, error } = await sb
@@ -263,15 +221,8 @@
             .order("created_at", { ascending: false })
             .limit(100);
 
-          if (error) {
-            showError(error.message);
-            return;
-          }
-
-          if (!data || data.length === 0) {
-            showInfo("No results found.");
-            return;
-          }
+          if (error) { showError(error.message); return; }
+          if (!data || data.length === 0) { showInfo("No results found."); return; }
 
           for (const row of data) {
             const tr = document.createElement("tr");
@@ -282,7 +233,6 @@
             `;
             tbody.appendChild(tr);
           }
-
           resultsTable.style.display = "table";
         } catch (e) {
           showError(e.message || String(e));
@@ -292,9 +242,7 @@
       }
 
       searchBtn.addEventListener("click", runSearch);
-      searchInput.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") runSearch();
-      });
+      searchInput.addEventListener("keydown", (e) => { if (e.key === "Enter") runSearch(); });
     });
   </script>
 </body>
