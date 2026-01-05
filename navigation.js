@@ -36,10 +36,7 @@ window.APP_NAV = {
       return a;
     };
 
-    // Desktop inline
     for (const link of this.links) inline.appendChild(makeLink(link));
-
-    // Mobile dropdown
     for (const link of this.links) {
       const a = makeLink(link);
       a.setAttribute("role", "menuitem");
@@ -61,11 +58,7 @@ window.APP_NAV = {
       }
     }
 
-    burger.addEventListener("click", (e) => {
-      e.stopPropagation();
-      toggleMenu();
-    });
-
+    burger.addEventListener("click", (e) => { e.stopPropagation(); toggleMenu(); });
     document.addEventListener("click", () => closeMenu());
     menu.addEventListener("click", () => closeMenu());
   }
