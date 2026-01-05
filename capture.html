@@ -229,9 +229,7 @@
 <body>
   <header>
     <h1>Inventory Capture</h1>
-    <div class="top-actions">
-      <a class="link-btn" href="./search.html">Search</a>
-    </div>
+  <div id="navBar" class="top-actions"></div>
   </header>
 
   <!-- Login -->
@@ -336,6 +334,8 @@
       const scannerCloseBtn = document.getElementById("scannerCloseBtn");
       const lastScan = document.getElementById("lastScan");
       const scanErr = document.getElementById("scanErr");
+  
+      window.APP_NAV.render("navBar");
 
       const escapeHtml = (str) =>
         String(str).replace(/[&<>"']/g, s => ({
@@ -620,4 +620,5 @@
   </script>
 </body>
 </html>
+
 
