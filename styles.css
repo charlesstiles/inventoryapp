@@ -63,9 +63,7 @@ textarea:focus {
   box-shadow: 0 0 0 3px rgba(30, 58, 138, 0.15);
 }
 
-textarea {
-  resize: vertical;
-}
+textarea { resize: vertical; }
 
 /* --- Buttons --- */
 .btn {
@@ -119,15 +117,214 @@ textarea {
 .error { background: #dc2626; }
 .info { background: #0ea5e9; }
 
-.muted {
-  color: #64748b;
-  font-size: 12px;
+.muted { color: #64748b; font-size: 12px; }
+
+.small { color: #64748b; font-size: 12px; margin-top: 10px; line-height: 1.4; }
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+  font-weight: 700;
+}
+
+/* =========================
+   Shared Tables
+   ========================= */
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 14px;
+  font-size: 14px;
+}
+.table th, .table td {
+  padding: 10px;
+  border-bottom: 1px solid #e2e8f0;
+  text-align: left;
+  vertical-align: top;
+}
+.table th {
+  background: #f1f5f9;
+  font-weight: 900;
+}
+.table tr:hover { background: #f8fafc; }
+.table tr.clickable { cursor: pointer; }
+
+/* =========================
+   Shared Thumbnail UI
+   ========================= */
+.thumbWrap {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  overflow: hidden;
+  background: #f1f5f9;
+  position: relative;
+}
+
+img.thumb {
+  width: 44px;
+  height: 44px;
+  object-fit: cover;
+  display: block;
+  opacity: 0;
+  transition: opacity 160ms ease;
+  background: #f1f5f9;
+}
+img.thumb.loaded { opacity: 1; }
+
+/* Shimmer placeholder */
+.shimmer::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    rgba(226,232,240,0.0) 0%,
+    rgba(226,232,240,0.7) 50%,
+    rgba(226,232,240,0.0) 100%
+  );
+  transform: translateX(-100%);
+  animation: shimmer 1.1s infinite;
+}
+@keyframes shimmer { 100% { transform: translateX(100%); } }
+
+/* =========================
+   Shared Modal (photo preview)
+   ========================= */
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.86);
+  display: none;
+  z-index: 10000;
+  padding: 14px;
+  box-sizing: border-box;
+}
+.modal-inner {
+  max-width: 900px;
+  margin: 0 auto;
+  background: #0b1220;
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid rgba(226,232,240,0.25);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+}
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px;
+  background: #0f172a;
+  color: #fff;
+  font-weight: 900;
+}
+.modal-header .meta {
+  font-weight: 800;
+  font-size: 13px;
+  color: #cbd5e1;
+  margin-top: 2px;
+}
+.modal-header button {
+  width: auto;
+  margin-top: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+}
+.modal-body {
+  background: #000;
+  display: grid;
+  place-items: center;
+  padding: 8px;
+}
+.modal-body img {
+  max-width: 100%;
+  max-height: 75vh;
+  object-fit: contain;
+  border-radius: 12px;
+  background: #000;
+}
+
+/* =========================
+   Shared Scanner Overlay (Quagga)
+   ========================= */
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.85);
+  display: none;
+  z-index: 9999;
+  padding: 16px;
+  box-sizing: border-box;
+}
+.overlay-inner {
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  background: #0b1220;
+  border: 1px solid rgba(226,232,240,0.2);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+}
+.overlay-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  background: #0f172a;
+  color: #fff;
+  font-weight: 900;
+}
+.overlay-header button {
+  width: auto;
+  margin-top: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+}
+#scannerArea {
+  position: relative;
+  width: 100%;
+  height: 70vh;
+  background: #000;
+  overflow: hidden;
+}
+#scannerArea video,
+#scannerArea canvas {
+  position: absolute !important;
+  top: 0; left: 0;
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: contain !important;
+}
+.scan-guide {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  z-index: 5;
+}
+.scan-frame {
+  width: 80%;
+  height: 35%;
+  border: 3px solid rgba(255,255,255,0.85);
+  border-radius: 14px;
+  box-shadow: 0 0 0 2000px rgba(0,0,0,0.25);
+}
+.overlay-footer {
+  padding: 12px;
+  background: #0f172a;
+  color: #e2e8f0;
+  font-size: 13px;
+  line-height: 1.35;
 }
 
 /* =========================
    Navigation (Hamburger)
    ========================= */
-
 #navBar { display: flex; justify-content: flex-end; }
 
 .navWrap {
