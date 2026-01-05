@@ -1,5 +1,5 @@
 // navigation.js
-// Responsive navigation: inline links on desktop, hamburger menu on mobile.
+// Responsive navigation: inline links on desktop, hamburger on mobile.
 
 window.APP_NAV = {
   links: [
@@ -12,20 +12,16 @@ window.APP_NAV = {
     const host = document.getElementById(containerId);
     if (!host) return;
 
-    // Detect current page to highlight
     const current = (location.pathname.split("/").pop() || "").toLowerCase();
 
     host.innerHTML = `
       <div class="navWrap">
-        <button class="navBurger" type="button" aria-label="Menu" aria-expanded="false">
-          ☰
-        </button>
+        <button class="navBurger" type="button" aria-label="Menu" aria-expanded="false">☰</button>
         <div class="navInline"></div>
         <div class="navMenu hidden" role="menu"></div>
       </div>
     `;
 
-    const wrap = host.querySelector(".navWrap");
     const burger = host.querySelector(".navBurger");
     const inline = host.querySelector(".navInline");
     const menu = host.querySelector(".navMenu");
@@ -70,10 +66,7 @@ window.APP_NAV = {
       toggleMenu();
     });
 
-    // Close when clicking outside
     document.addEventListener("click", () => closeMenu());
-
-    // Close after selecting a link
     menu.addEventListener("click", () => closeMenu());
   }
 };
