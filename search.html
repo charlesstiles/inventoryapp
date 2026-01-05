@@ -8,6 +8,9 @@
   <!-- Supabase JS v2 -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
+  <!-- Shared config (add config.js at repo root) -->
+  <script src="./config.js"></script>
+
   <style>
     body {
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
@@ -25,10 +28,7 @@
       margin-bottom: 10px;
     }
 
-    h1 {
-      font-size: 20px;
-      margin: 0;
-    }
+    h1 { font-size: 20px; margin: 0; }
 
     a.link-btn {
       display: inline-block;
@@ -39,6 +39,8 @@
       text-decoration: none;
       font-weight: 800;
       background: #fff;
+      text-align: center;
+      white-space: nowrap;
     }
 
     .card {
@@ -83,10 +85,7 @@
       margin-top: 12px;
     }
 
-    button:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
-    }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
 
     table {
       width: 100%;
@@ -107,34 +106,20 @@
       font-weight: 800;
     }
 
-    tr:hover {
-      background: #f8fafc;
-    }
+    tr:hover { background: #f8fafc; }
 
-    .muted {
-      color: #64748b;
-      font-size: 12px;
-    }
+    .muted { color: #64748b; font-size: 12px; }
 
-    .error {
-      background: #dc2626;
-      color: #fff;
+    .error, .info {
       padding: 10px;
       margin-top: 12px;
       border-radius: 10px;
       font-weight: 800;
       text-align: center;
-    }
-
-    .info {
-      background: #0ea5e9;
       color: #fff;
-      padding: 10px;
-      margin-top: 12px;
-      border-radius: 10px;
-      font-weight: 800;
-      text-align: center;
     }
+    .error { background: #dc2626; }
+    .info { background: #0ea5e9; }
   </style>
 </head>
 
@@ -146,7 +131,7 @@
 
   <div class="card">
     <label for="searchInput">Search items</label>
-    <input id="searchInput" placeholder="Search by description, container, etc." />
+    <input id="searchInput" placeholder="Search by description or container code" />
 
     <button id="searchBtn" type="button">Search</button>
 
@@ -166,9 +151,11 @@
 
   <script>
     document.addEventListener("DOMContentLoaded", () => {
-      // 🔐 CONFIG — paste your CURRENT anon/public key here
-      const SUPABASE_URL = "https://htmqdzvepyhpklrykjgh.supabase.co";
-      const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh0bXFkenZlcHlocGtscnlramdoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc0NzAzMjEsImV4cCI6MjA4MzA0NjMyMX0.nC_2KfGq6LGUhYjNQTXMFM_7Q_P0MflXEhV_GP1D16M";
+      if (!window.APP_CONFIG || !window.APP_CONFIG.SUPABASE_URL || !window.APP_CONFIG.SUPABASE_ANON_KEY) {
+        alert("Missing config.js or SUPABASE settings. Ensure config.js exists and is loaded.");
+        return;
+      }
+      const { SUPABASE_URL, SUPABASE_ANON_KEY } = window.APP_CONFIG;
 
       const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -178,14 +165,8 @@
       const resultsTable = document.getElementById("resultsTable");
       const tbody = resultsTable.querySelector("tbody");
 
-      function showError(msg) {
-        searchMsg.innerHTML = `<div class="error">${msg}</div>`;
-      }
-
-      function showInfo(msg) {
-        searchMsg.innerHTML = `<div class="info">${msg}</div>`;
-      }
-
+      function showError(msg) { searchMsg.innerHTML = `<div class="error">${msg}</div>`; }
+      function showInfo(msg) { searchMsg.innerHTML = `<div class="info">${msg}</div>`; }
       function clearResults() {
         tbody.innerHTML = "";
         resultsTable.style.display = "none";
@@ -207,9 +188,7 @@
           const { data, error } = await sb
             .from("items")
             .select("item_description, container_code, created_at")
-            .or(
-              `item_description.ilike.%${term}%,container_code.ilike.%${term}%`
-            )
+            .or(`item_description.ilike.%${term}%,container_code.ilike.%${term}%`)
             .order("created_at", { ascending: false })
             .limit(100);
 
@@ -225,13 +204,11 @@
 
           for (const row of data) {
             const tr = document.createElement("tr");
-
             tr.innerHTML = `
               <td>${row.item_description}</td>
               <td>${row.container_code}</td>
               <td class="muted">${new Date(row.created_at).toLocaleString()}</td>
             `;
-
             tbody.appendChild(tr);
           }
 
