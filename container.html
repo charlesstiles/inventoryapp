@@ -16,6 +16,72 @@
   <script src="./navigation.js"></script>
 
   <style>
+    /* --- Navigation (responsive) --- */
+#navBar { display: flex; justify-content: flex-end; }
+
+.navWrap { position: relative; display: flex; align-items: center; gap: 10px; }
+
+/* Desktop inline links */
+.navInline { display: flex; gap: 10px; align-items: center; }
+
+/* Hamburger button (mobile) */
+.navBurger {
+  display: none;            /* hidden on desktop */
+  width: auto;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid #1e3a8a;
+  background: #fff;
+  color: #1e3a8a;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+/* Links (small, consistent) */
+.navLink {
+  display: inline-block;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid #1e3a8a;
+  background: #fff;
+  color: #1e3a8a;
+  text-decoration: none;
+  font-weight: 900;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.navLink.active {
+  background: #1e3a8a;
+  color: #fff;
+}
+
+/* Dropdown menu (mobile) */
+.navMenu {
+  position: absolute;
+  top: 44px;
+  right: 0;
+  min-width: 160px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 10px 20px rgba(15,23,42,0.18);
+  padding: 8px;
+  display: grid;
+  gap: 8px;
+  z-index: 2000;
+}
+
+/* Utility */
+.hidden { display: none !important; }
+
+/* Responsive breakpoint */
+@media (max-width: 520px) {
+  .navInline { display: none; }   /* hide inline on mobile */
+  .navBurger { display: inline-block; } /* show hamburger */
+  .navLink { width: 100%; }       /* menu links fill */
+}
+
     body {
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
       background: #f8fafc;
