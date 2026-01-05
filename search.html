@@ -10,27 +10,6 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="./config.js"></script>
   <script src="./navigation.js"></script>
-
-  <style>
-    /* Page-specific only */
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 14px;
-      font-size: 14px;
-    }
-    th, td {
-      padding: 10px;
-      border-bottom: 1px solid #e2e8f0;
-      text-align: left;
-      vertical-align: top;
-    }
-    th {
-      background: #f1f5f9;
-      font-weight: 900;
-    }
-    tr:hover { background: #f8fafc; }
-  </style>
 </head>
 
 <body>
@@ -47,7 +26,7 @@
 
     <div id="searchMsg"></div>
 
-    <table id="resultsTable" class="hidden">
+    <table id="resultsTable" class="table hidden">
       <thead>
         <tr>
           <th>Description</th>
