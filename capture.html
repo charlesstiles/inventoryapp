@@ -5,85 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Inventory Capture</title>
 
-  <!-- Supabase JS (v2) -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
-  <!-- Quagga2 for barcode scanning (supports Code 39) -->
   <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.8.4/dist/quagga.min.js"></script>
 
-  <!-- Shared config (add config.js at repo root) -->
   <script src="./config.js"></script>
-
-  <!-- Shared navigation (add navigation.js at repo root) -->
   <script src="./navigation.js"></script>
 
   <style>
-    /* --- Navigation (responsive) --- */
-#navBar { display: flex; justify-content: flex-end; }
-
-.navWrap { position: relative; display: flex; align-items: center; gap: 10px; }
-
-/* Desktop inline links */
-.navInline { display: flex; gap: 10px; align-items: center; }
-
-/* Hamburger button (mobile) */
-.navBurger {
-  display: none;            /* hidden on desktop */
-  width: auto;
-  padding: 8px 10px;
-  border-radius: 10px;
-  border: 1px solid #1e3a8a;
-  background: #fff;
-  color: #1e3a8a;
-  font-weight: 900;
-  cursor: pointer;
-}
-
-/* Links (small, consistent) */
-.navLink {
-  display: inline-block;
-  padding: 8px 10px;
-  border-radius: 10px;
-  border: 1px solid #1e3a8a;
-  background: #fff;
-  color: #1e3a8a;
-  text-decoration: none;
-  font-weight: 900;
-  font-size: 14px;
-  line-height: 1;
-}
-
-.navLink.active {
-  background: #1e3a8a;
-  color: #fff;
-}
-
-/* Dropdown menu (mobile) */
-.navMenu {
-  position: absolute;
-  top: 44px;
-  right: 0;
-  min-width: 160px;
-  background: #fff;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  box-shadow: 0 10px 20px rgba(15,23,42,0.18);
-  padding: 8px;
-  display: grid;
-  gap: 8px;
-  z-index: 2000;
-}
-
-/* Utility */
-.hidden { display: none !important; }
-
-/* Responsive breakpoint */
-@media (max-width: 520px) {
-  .navInline { display: none; }   /* hide inline on mobile */
-  .navBurger { display: inline-block; } /* show hamburger */
-  .navLink { width: 100%; }       /* menu links fill */
-}
-
     body {
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
       background: #f8fafc;
@@ -102,25 +30,53 @@
 
     h1 { font-size: 20px; margin: 0; }
 
-    .top-actions {
-      display: flex;
-      gap: 10px;
-      align-items: center;
-      justify-content: flex-end;
-      min-width: 160px;
-    }
-
-    a.link-btn {
-      display: inline-block;
-      padding: 10px 12px;
+    /* --- Navigation (responsive hamburger) --- */
+    #navBar { display: flex; justify-content: flex-end; }
+    .navWrap { position: relative; display: flex; align-items: center; gap: 10px; }
+    .navInline { display: flex; gap: 10px; align-items: center; }
+    .navBurger {
+      display: none;
+      width: auto;
+      padding: 8px 10px;
       border-radius: 10px;
       border: 1px solid #1e3a8a;
+      background: #fff;
+      color: #1e3a8a;
+      font-weight: 900;
+      cursor: pointer;
+    }
+    .navLink {
+      display: inline-block;
+      padding: 8px 10px;
+      border-radius: 10px;
+      border: 1px solid #1e3a8a;
+      background: #fff;
       color: #1e3a8a;
       text-decoration: none;
-      font-weight: 800;
+      font-weight: 900;
+      font-size: 14px;
+      line-height: 1;
+    }
+    .navLink.active { background: #1e3a8a; color: #fff; }
+    .navMenu {
+      position: absolute;
+      top: 44px;
+      right: 0;
+      min-width: 160px;
       background: #fff;
-      text-align: center;
-      white-space: nowrap;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      box-shadow: 0 10px 20px rgba(15,23,42,0.18);
+      padding: 8px;
+      display: grid;
+      gap: 8px;
+      z-index: 2000;
+    }
+    .hidden { display: none !important; }
+    @media (max-width: 520px) {
+      .navInline { display: none; }
+      .navBurger { display: inline-block; }
+      .navLink { width: 100%; }
     }
 
     .card {
@@ -183,18 +139,17 @@
       margin-top: 10px;
     }
 
-    .hidden { display: none; }
-
     .success, .error, .info {
       padding: 10px;
       margin-top: 12px;
       border-radius: 10px;
       text-align: center;
       font-weight: 800;
+      color: #fff;
     }
-    .success { background: #16a34a; color: #fff; }
-    .error { background: #dc2626; color: #fff; }
-    .info { background: #0ea5e9; color: #fff; }
+    .success { background: #16a34a; }
+    .error { background: #dc2626; }
+    .info { background: #0ea5e9; }
 
     .small {
       color: #64748b;
@@ -230,10 +185,10 @@
       justify-content: space-between;
       align-items: center;
       gap: 10px;
-      padding: 12px 12px;
+      padding: 12px;
       background: #0f172a;
       color: #fff;
-      font-weight: 800;
+      font-weight: 900;
     }
 
     .overlay-header button {
@@ -243,14 +198,12 @@
       border-radius: 10px;
     }
 
-    /* ✅ Preview stability + "contain" to prevent crop/zoom */
     #scannerArea {
       position: relative;
       width: 100%;
       height: 70vh;
       background: #000;
       overflow: hidden;
-      border-radius: 0;
     }
     #scannerArea video,
     #scannerArea canvas {
@@ -295,7 +248,7 @@
 <body>
   <header>
     <h1>Inventory Capture</h1>
-  <div id="navBar" class="top-actions"></div>
+    <div id="navBar"></div>
   </header>
 
   <!-- Login -->
@@ -308,10 +261,7 @@
 
     <button id="signInBtn" type="button" class="btn">Sign In</button>
 
-    <div class="small">
-      Tip: after deploying, open with <b>?v=123</b> to bust cache.
-    </div>
-
+    <div class="small">Tip: open with <b>?v=123</b> to bust cache.</div>
     <div id="loginMsg"></div>
   </div>
 
@@ -346,36 +296,28 @@
       </div>
 
       <div id="scannerArea">
-        <div class="scan-guide">
-          <div class="scan-frame"></div>
-        </div>
+        <div class="scan-guide"><div class="scan-frame"></div></div>
       </div>
 
       <div class="overlay-footer">
-        Hold the barcode inside the frame. When detected, it will auto-fill the container code.
+        Hold barcode inside the frame. It will auto-fill the container code.
         <div style="margin-top:8px;">Last scan: <span id="lastScan" class="mono">—</span></div>
-        <div id="scanErr" style="margin-top:8px;color:#fca5a5;font-weight:800;"></div>
+        <div id="scanErr" style="margin-top:8px;color:#fca5a5;font-weight:900;"></div>
       </div>
     </div>
   </div>
 
   <script>
     document.addEventListener("DOMContentLoaded", () => {
-      // ---- Shared config ----
+      // Nav
+      if (window.APP_NAV) window.APP_NAV.render("navBar");
+
+      // Config
       if (!window.APP_CONFIG || !window.APP_CONFIG.SUPABASE_URL || !window.APP_CONFIG.SUPABASE_ANON_KEY) {
-        alert("Missing config.js or SUPABASE settings. Ensure config.js exists and is loaded.");
+        alert("Missing config.js settings.");
         return;
       }
       const { SUPABASE_URL, SUPABASE_ANON_KEY } = window.APP_CONFIG;
-
-      if (!window.supabase || !window.supabase.createClient) {
-        alert("Supabase JS library failed to load. Check your network and refresh.");
-        return;
-      }
-      if (!window.Quagga) {
-        alert("Scanner library (Quagga2) failed to load. Check your network and refresh.");
-        return;
-      }
 
       const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -400,8 +342,6 @@
       const scannerCloseBtn = document.getElementById("scannerCloseBtn");
       const lastScan = document.getElementById("lastScan");
       const scanErr = document.getElementById("scanErr");
-  
-      window.APP_NAV.render("navBar");
 
       const escapeHtml = (str) =>
         String(str).replace(/[&<>"']/g, s => ({
@@ -446,17 +386,10 @@
         try {
           const email = emailInput.value.trim();
           const password = passwordInput.value;
-
-          if (!email || !password) {
-            showLoginError("Email and password are required.");
-            return;
-          }
+          if (!email || !password) { showLoginError("Email and password are required."); return; }
 
           const { error } = await sb.auth.signInWithPassword({ email, password });
-          if (error) {
-            showLoginError(error.message);
-            return;
-          }
+          if (error) { showLoginError(error.message); return; }
 
           await refreshUI();
         } catch (e) {
@@ -494,7 +427,6 @@
           if (!file) { showCaptureError("Photo is required."); return; }
           if (!description) { showCaptureError("Description is required."); return; }
 
-          // Ensure container exists
           const upsertContainer = await sb
             .from("containers")
             .upsert({ container_code: containerCode }, { onConflict: "container_code" });
@@ -504,7 +436,6 @@
             return;
           }
 
-          // Upload photo
           const safeName = (file.name || "photo.jpg").replace(/[^\w.\-]/g, "_");
           const filePath = `${containerCode}/${Date.now()}_${safeName}`;
 
@@ -512,24 +443,16 @@
             .from("item-photos")
             .upload(filePath, file, { upsert: false });
 
-          if (up.error) {
-            showCaptureError("Upload failed: " + up.error.message);
-            return;
-          }
+          if (up.error) { showCaptureError("Upload failed: " + up.error.message); return; }
 
-          // Insert item
           const ins = await sb.from("items").insert({
             container_code: containerCode,
             item_description: description,
             photo_path: filePath
           });
 
-          if (ins.error) {
-            showCaptureError("Save failed: " + ins.error.message);
-            return;
-          }
+          if (ins.error) { showCaptureError("Save failed: " + ins.error.message); return; }
 
-          // Reset for next item
           descInput.value = "";
           photoInput.value = "";
           showCaptureSuccess("Saved ✓");
@@ -542,17 +465,50 @@
       });
 
       // ----------------------------
-      // Scanner (Code 39) - stable preview + lowercase (Full ASCII) decode
+      // Scanner (Code 39) - stable preview + Full ASCII lowercase decode
       // ----------------------------
       let scannerRunning = false;
       let lastDetectedAt = 0;
       let didDecode = false;
 
+      scanContainerBtn.addEventListener("click", () => openScanner());
+      scannerCloseBtn.addEventListener("click", () => closeScanner());
+      scannerOverlay.addEventListener("click", (e) => { if (e.target === scannerOverlay) closeScanner(); });
+
+      function decodeCode39FullASCII(s) {
+        return String(s || "").replace(/\+([A-Z])/g, (_, ch) => ch.toLowerCase());
+      }
+
+      function normalizeCode39(value) {
+        const raw = String(value || "").trim().replace(/^\*+|\*+$/g, "");
+        return decodeCode39FullASCII(raw);
+      }
+
+      function getCameraConstraints() {
+        return {
+          facingMode: { ideal: "environment" },
+          aspectRatio: { ideal: 4 / 3 },
+          width:  { ideal: 1280 },
+          height: { ideal: 960 }
+        };
+      }
+
+      async function forceMinZoomIfSupported() {
+        try {
+          const ca = Quagga.CameraAccess;
+          const track = (ca && typeof ca.getActiveTrack === "function") ? ca.getActiveTrack() : null;
+          if (!track) return;
+          const caps = track.getCapabilities ? track.getCapabilities() : null;
+          if (!caps || !caps.zoom) return;
+          const minZoom = (caps.zoom.min != null) ? caps.zoom.min : 1;
+          await track.applyConstraints({ advanced: [{ zoom: minZoom }] });
+        } catch (_) {}
+      }
+
       function openScanner() {
         scanErr.textContent = "";
         lastScan.textContent = "Scanning…";
         didDecode = false;
-
         scannerOverlay.style.display = "block";
         scannerOverlay.setAttribute("aria-hidden", "false");
         startScanner();
@@ -564,53 +520,8 @@
         scannerOverlay.setAttribute("aria-hidden", "true");
       }
 
-      scannerCloseBtn.addEventListener("click", closeScanner);
-      scannerOverlay.addEventListener("click", (e) => {
-        if (e.target === scannerOverlay) closeScanner();
-      });
-      scanContainerBtn.addEventListener("click", () => openScanner());
-
-      function decodeCode39FullASCII(s) {
-        // +A..+Z => a..z (fixes A+A-1234 => Aa-1234)
-        return String(s || "").replace(/\+([A-Z])/g, (_, ch) => ch.toLowerCase());
-      }
-
-      function normalizeCode39(value) {
-        const raw = String(value || "").trim().replace(/^\*+|\*+$/g, "");
-        // If you want to force ALL container codes uppercase, append .toUpperCase()
-        return decodeCode39FullASCII(raw);
-      }
-
-      // 4:3 tends to reduce weird crop/snap-zoom on many Android devices
-      function getCameraConstraints() {
-        return {
-          facingMode: { ideal: "environment" },
-          aspectRatio: { ideal: 4 / 3 },
-          width:  { ideal: 1280 },
-          height: { ideal: 960 }
-        };
-      }
-
-      // If browser exposes zoom capability, force minimum after start
-      async function forceMinZoomIfSupported() {
-        try {
-          const ca = Quagga.CameraAccess;
-          const track = (ca && typeof ca.getActiveTrack === "function") ? ca.getActiveTrack() : null;
-          if (!track) return;
-
-          const caps = track.getCapabilities ? track.getCapabilities() : null;
-          if (!caps || !caps.zoom) return;
-
-          const minZoom = (caps.zoom.min != null) ? caps.zoom.min : 1;
-          await track.applyConstraints({ advanced: [{ zoom: minZoom }] });
-        } catch (_) { /* ignore */ }
-      }
-
       function startScanner() {
         if (scannerRunning) return;
-
-        scanErr.textContent = "";
-        lastScan.textContent = "Scanning…";
 
         const config = {
           inputStream: {
@@ -659,7 +570,7 @@
           Quagga.offDetected(onDetected);
           Quagga.offProcessed();
           Quagga.stop();
-        } catch (_) { /* ignore */ }
+        } catch (_) {}
         scannerRunning = false;
       }
 
@@ -686,6 +597,3 @@
   </script>
 </body>
 </html>
-
-
-
