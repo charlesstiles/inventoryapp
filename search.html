@@ -5,156 +5,31 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Inventory Search</title>
 
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <link rel="stylesheet" href="./styles.css">
 
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="./config.js"></script>
   <script src="./navigation.js"></script>
 
   <style>
-    body {
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-      background: #f8fafc;
-      margin: 0;
-      padding: 16px;
-      color: #0f172a;
-    }
-
-    header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      margin-bottom: 10px;
-    }
-
-    h1 { font-size: 20px; margin: 0; }
-
-    /* --- Navigation (responsive hamburger) --- */
-    #navBar { display: flex; justify-content: flex-end; }
-    .navWrap { position: relative; display: flex; align-items: center; gap: 10px; }
-    .navInline { display: flex; gap: 10px; align-items: center; }
-    .navBurger {
-      display: none;
-      width: auto;
-      padding: 8px 10px;
-      border-radius: 10px;
-      border: 1px solid #1e3a8a;
-      background: #fff;
-      color: #1e3a8a;
-      font-weight: 900;
-      cursor: pointer;
-    }
-    .navLink {
-      display: inline-block;
-      padding: 8px 10px;
-      border-radius: 10px;
-      border: 1px solid #1e3a8a;
-      background: #fff;
-      color: #1e3a8a;
-      text-decoration: none;
-      font-weight: 900;
-      font-size: 14px;
-      line-height: 1;
-    }
-    .navLink.active { background: #1e3a8a; color: #fff; }
-    .navMenu {
-      position: absolute;
-      top: 44px;
-      right: 0;
-      min-width: 160px;
-      background: #fff;
-      border: 1px solid #e2e8f0;
-      border-radius: 12px;
-      box-shadow: 0 10px 20px rgba(15,23,42,0.18);
-      padding: 8px;
-      display: grid;
-      gap: 8px;
-      z-index: 2000;
-    }
-    .hidden { display: none !important; }
-    @media (max-width: 520px) {
-      .navInline { display: none; }
-      .navBurger { display: inline-block; }
-      .navLink { width: 100%; }
-    }
-
-    .card {
-      background: #fff;
-      border: 1px solid #e2e8f0;
-      border-radius: 12px;
-      padding: 14px;
-      margin-top: 12px;
-      box-shadow: 0 1px 2px rgba(15,23,42,0.06);
-    }
-
-    label {
-      display: block;
-      margin-top: 10px;
-      color: #475569;
-      font-size: 14px;
-      font-weight: 600;
-    }
-
-    input, button {
-      width: 100%;
-      padding: 12px;
-      margin-top: 6px;
-      font-size: 16px;
-      border-radius: 10px;
-      border: 1px solid #cbd5e1;
-      box-sizing: border-box;
-    }
-
-    input:focus {
-      border-color: #1e3a8a;
-      box-shadow: 0 0 0 3px rgba(30,58,138,0.15);
-      outline: none;
-    }
-
-    button {
-      background: #1e3a8a;
-      color: #fff;
-      font-weight: 900;
-      border: none;
-      cursor: pointer;
-      margin-top: 12px;
-    }
-
-    button:disabled { opacity: 0.6; cursor: not-allowed; }
-
+    /* Page-specific only */
     table {
       width: 100%;
       border-collapse: collapse;
       margin-top: 14px;
       font-size: 14px;
     }
-
     th, td {
       padding: 10px;
       border-bottom: 1px solid #e2e8f0;
       text-align: left;
       vertical-align: top;
     }
-
     th {
       background: #f1f5f9;
       font-weight: 900;
     }
-
     tr:hover { background: #f8fafc; }
-
-    .muted { color: #64748b; font-size: 12px; }
-
-    .error, .info {
-      padding: 10px;
-      margin-top: 12px;
-      border-radius: 10px;
-      font-weight: 900;
-      text-align: center;
-      color: #fff;
-    }
-    .error { background: #dc2626; }
-    .info { background: #0ea5e9; }
   </style>
 </head>
 
@@ -168,14 +43,14 @@
     <label for="searchInput">Search items</label>
     <input id="searchInput" placeholder="Search by description or container code" />
 
-    <button id="searchBtn" type="button">Search</button>
+    <button id="searchBtn" type="button" class="btn">Search</button>
 
     <div id="searchMsg"></div>
 
-    <table id="resultsTable" style="display:none;">
+    <table id="resultsTable" class="hidden">
       <thead>
         <tr>
-          <th>Item Description</th>
+          <th>Description</th>
           <th>Container</th>
           <th>Created</th>
         </tr>
@@ -201,9 +76,14 @@
       const resultsTable = document.getElementById("resultsTable");
       const tbody = resultsTable.querySelector("tbody");
 
-      function showError(msg) { searchMsg.innerHTML = `<div class="error">${msg}</div>`; }
-      function showInfo(msg) { searchMsg.innerHTML = `<div class="info">${msg}</div>`; }
-      function clearResults() { tbody.innerHTML = ""; resultsTable.style.display = "none"; }
+      function show(type, text) {
+        searchMsg.innerHTML = `<div class="${type}">${String(text)}</div>`;
+      }
+
+      function clearResults() {
+        tbody.innerHTML = "";
+        resultsTable.classList.add("hidden");
+      }
 
       async function runSearch() {
         searchBtn.disabled = true;
@@ -211,7 +91,7 @@
         clearResults();
 
         const term = searchInput.value.trim();
-        if (!term) { showError("Enter a search term."); searchBtn.disabled = false; return; }
+        if (!term) { show("error", "Enter a search term."); searchBtn.disabled = false; return; }
 
         try {
           const { data, error } = await sb
@@ -219,23 +99,23 @@
             .select("item_description, container_code, created_at")
             .or(`item_description.ilike.%${term}%,container_code.ilike.%${term}%`)
             .order("created_at", { ascending: false })
-            .limit(100);
+            .limit(200);
 
-          if (error) { showError(error.message); return; }
-          if (!data || data.length === 0) { showInfo("No results found."); return; }
+          if (error) { show("error", error.message); return; }
+          if (!data || data.length === 0) { show("info", "No results found."); return; }
 
           for (const row of data) {
             const tr = document.createElement("tr");
             tr.innerHTML = `
-              <td>${row.item_description}</td>
-              <td>${row.container_code}</td>
+              <td>${row.item_description || ""}</td>
+              <td>${row.container_code || ""}</td>
               <td class="muted">${new Date(row.created_at).toLocaleString()}</td>
             `;
             tbody.appendChild(tr);
           }
-          resultsTable.style.display = "table";
+          resultsTable.classList.remove("hidden");
         } catch (e) {
-          showError(e.message || String(e));
+          show("error", e?.message || String(e));
         } finally {
           searchBtn.disabled = false;
         }
