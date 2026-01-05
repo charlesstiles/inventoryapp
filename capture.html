@@ -281,7 +281,7 @@
     document.addEventListener("DOMContentLoaded", () => {
       // ✅ CONFIG: add your anon public key (NOT service role)
       const SUPABASE_URL = "https://htmqdzvepyhpklrykjgh.supabase.co";
-      const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh0bXFkenZlcHlocGtscnlramdoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc0NzAzMjEsImV4cCI6MjA4MzA0NjMyMX0.nC_2KfGq6LGUhYjNQTXMFM_7Q_P0MflXEhV_GP1D16M";
+      const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh0bXFkenZlcHlocGtscnlramdoIiwicm9sZSI6ImFub24iLCJpYXQiOj";
 
       if (!window.supabase || !window.supabase.createClient) {
         alert("Supabase JS library failed to load. Check your network and refresh.");
@@ -455,14 +455,17 @@
       });
 
       // ----------------------------
-      // Scanner (Code 39) - tuned + feedback
+      // Scanner (Code 39) - tuned for SMALL printed labels + Full ASCII lowercase decode
       // ----------------------------
       let scannerRunning = false;
       let lastDetectedAt = 0;
+      let didDecode = false;
 
       function openScanner() {
         scanErr.textContent = "";
         lastScan.textContent = "Scanning…";
+        didDecode = false;
+
         scannerOverlay.style.display = "block";
         scannerOverlay.setAttribute("aria-hidden", "false");
         startScanner();
@@ -479,15 +482,32 @@
         if (e.target === scannerOverlay) closeScanner();
       });
 
-      scanContainerBtn.addEventListener("click", () => {
-        openScanner();
-      });
+      scanContainerBtn.addEventListener("click", () => openScanner());
+
+      function decodeCode39FullASCII(s) {
+        // Minimal Code 39 Full ASCII decode needed for lowercase:
+        // +A..+Z => a..z  (fixes A+A-1234 => Aa-1234)
+        return String(s || "").replace(/\+([A-Z])/g, (_, ch) => ch.toLowerCase());
+      }
 
       function normalizeCode39(value) {
-        return String(value || "")
+        const raw = String(value || "")
           .trim()
-          .replace(/^\*+|\*+$/g, "")
-          .toUpperCase();
+          .replace(/^\*+|\*+$/g, "");
+        // If you want to force ALL container codes uppercase, append .toUpperCase()
+        return decodeCode39FullASCII(raw);
+      }
+
+      function getCameraConstraints() {
+        return {
+          facingMode: "environment",
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+          advanced: [
+            { focusMode: "continuous" },
+            { zoom: 2 }
+          ]
+        };
       }
 
       function startScanner() {
@@ -500,14 +520,10 @@
           inputStream: {
             type: "LiveStream",
             target: document.querySelector("#scannerArea"),
-            constraints: {
-              facingMode: "environment",
-              width: { ideal: 1920 },
-              height: { ideal: 1080 }
-            }
+            constraints: getCameraConstraints()
           },
           locator: {
-            patchSize: "large",
+            patchSize: "x-large",
             halfSample: false
           },
           numOfWorkers: 0,
@@ -515,7 +531,13 @@
           decoder: {
             readers: ["code_39_reader"]
           },
-          locate: true
+          locate: true,
+          area: {
+            top: "35%",
+            right: "10%",
+            left: "10%",
+            bottom: "35%"
+          }
         };
 
         Quagga.init(config, (err) => {
@@ -528,8 +550,13 @@
         });
 
         Quagga.onProcessed((result) => {
-          if (result && result.boxes && result.boxes.length) {
-            lastScan.textContent = "Scanning… (barcode candidate detected)";
+          if (!scannerRunning) return;
+          if (didDecode) return;
+
+          const hasCandidates = !!(result && result.boxes && result.boxes.length);
+          if (hasCandidates) {
+            lastScan.textContent = "Scanning… (candidate detected)";
+            scanErr.textContent = "";
           } else {
             lastScan.textContent = "Scanning…";
           }
@@ -538,11 +565,11 @@
         Quagga.onDetected(onDetected);
 
         setTimeout(() => {
-          if (scannerRunning && String(lastScan.textContent || "").startsWith("Scanning")) {
+          if (scannerRunning && !didDecode) {
             scanErr.textContent =
-              "No decode yet. Try brighter light, move closer, hold steady, or print/enlarge the barcode.";
+              "No decode yet. Move closer, center barcode in frame, tilt to reduce glare, or increase label size.";
           }
-        }, 8000);
+        }, 7000);
       }
 
       async function stopScannerIfRunning() {
@@ -550,7 +577,7 @@
 
         try {
           Quagga.offDetected(onDetected);
-          Quagga.offProcessed(); // remove all processed handlers
+          Quagga.offProcessed();
           Quagga.stop();
         } catch (_) {
           // ignore
@@ -561,12 +588,14 @@
 
       async function onDetected(result) {
         const now = Date.now();
-        if (now - lastDetectedAt < 1200) return; // debounce
+        if (now - lastDetectedAt < 900) return; // debounce
         lastDetectedAt = now;
 
-        const code = normalizeCode39(result?.codeResult?.code);
+        const raw = result?.codeResult?.code;
+        const code = normalizeCode39(raw);
         if (!code) return;
 
+        didDecode = true;
         lastScan.textContent = code;
         containerInput.value = code;
 
@@ -581,4 +610,3 @@
   </script>
 </body>
 </html>
-
