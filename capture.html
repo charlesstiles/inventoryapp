@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Inventory Capture</title>
 
+  <link rel="stylesheet" href="./styles.css">
+
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.8.4/dist/quagga.min.js"></script>
 
@@ -12,145 +14,7 @@
   <script src="./navigation.js"></script>
 
   <style>
-    body {
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-      background: #f8fafc;
-      margin: 0;
-      padding: 16px;
-      color: #0f172a;
-    }
-
-    header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      margin-bottom: 10px;
-    }
-
-    h1 { font-size: 20px; margin: 0; }
-
-    /* --- Navigation (responsive hamburger) --- */
-    #navBar { display: flex; justify-content: flex-end; }
-    .navWrap { position: relative; display: flex; align-items: center; gap: 10px; }
-    .navInline { display: flex; gap: 10px; align-items: center; }
-    .navBurger {
-      display: none;
-      width: auto;
-      padding: 8px 10px;
-      border-radius: 10px;
-      border: 1px solid #1e3a8a;
-      background: #fff;
-      color: #1e3a8a;
-      font-weight: 900;
-      cursor: pointer;
-    }
-    .navLink {
-      display: inline-block;
-      padding: 8px 10px;
-      border-radius: 10px;
-      border: 1px solid #1e3a8a;
-      background: #fff;
-      color: #1e3a8a;
-      text-decoration: none;
-      font-weight: 900;
-      font-size: 14px;
-      line-height: 1;
-    }
-    .navLink.active { background: #1e3a8a; color: #fff; }
-    .navMenu {
-      position: absolute;
-      top: 44px;
-      right: 0;
-      min-width: 160px;
-      background: #fff;
-      border: 1px solid #e2e8f0;
-      border-radius: 12px;
-      box-shadow: 0 10px 20px rgba(15,23,42,0.18);
-      padding: 8px;
-      display: grid;
-      gap: 8px;
-      z-index: 2000;
-    }
-    .hidden { display: none !important; }
-    @media (max-width: 520px) {
-      .navInline { display: none; }
-      .navBurger { display: inline-block; }
-      .navLink { width: 100%; }
-    }
-
-    .card {
-      background: #fff;
-      border: 1px solid #e2e8f0;
-      border-radius: 12px;
-      padding: 14px;
-      margin-top: 12px;
-      box-shadow: 0 1px 2px rgba(15,23,42,0.06);
-    }
-
-    label {
-      display: block;
-      margin-top: 10px;
-      color: #475569;
-      font-size: 14px;
-      font-weight: 600;
-    }
-
-    input, textarea, button {
-      width: 100%;
-      padding: 12px;
-      margin-top: 6px;
-      font-size: 16px;
-      box-sizing: border-box;
-      border-radius: 10px;
-      border: 1px solid #cbd5e1;
-      outline: none;
-    }
-
-    input:focus, textarea:focus {
-      border-color: #1e3a8a;
-      box-shadow: 0 0 0 3px rgba(30,58,138,0.15);
-    }
-
-    textarea { min-height: 90px; resize: vertical; }
-
-    .btn {
-      background: #1e3a8a;
-      color: #fff;
-      border: none;
-      font-weight: 800;
-      cursor: pointer;
-      margin-top: 14px;
-    }
-    .btn:disabled { opacity: 0.6; cursor: not-allowed; }
-
-    .btn-secondary {
-      background: #fff;
-      color: #1e3a8a;
-      border: 1px solid #1e3a8a;
-      font-weight: 800;
-      cursor: pointer;
-    }
-
-    .row3 {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
-      gap: 10px;
-      margin-top: 10px;
-    }
-
-    .success, .error, .info {
-      padding: 10px;
-      margin-top: 12px;
-      border-radius: 10px;
-      text-align: center;
-      font-weight: 800;
-      color: #fff;
-    }
-    .success { background: #16a34a; }
-    .error { background: #dc2626; }
-    .info { background: #0ea5e9; }
-
+    /* Page-specific styles only (scanner overlay + small helpers) */
     .small {
       color: #64748b;
       font-size: 12px;
@@ -205,6 +69,7 @@
       background: #000;
       overflow: hidden;
     }
+
     #scannerArea video,
     #scannerArea canvas {
       position: absolute !important;
@@ -222,6 +87,7 @@
       pointer-events: none;
       z-index: 5;
     }
+
     .scan-frame {
       width: 80%;
       height: 35%;
@@ -239,7 +105,8 @@
     }
 
     .mono {
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+        "Liberation Mono", "Courier New", monospace;
       font-weight: 700;
     }
   </style>
@@ -309,16 +176,13 @@
 
   <script>
     document.addEventListener("DOMContentLoaded", () => {
-      // Nav
       if (window.APP_NAV) window.APP_NAV.render("navBar");
 
-      // Config
       if (!window.APP_CONFIG || !window.APP_CONFIG.SUPABASE_URL || !window.APP_CONFIG.SUPABASE_ANON_KEY) {
         alert("Missing config.js settings.");
         return;
       }
       const { SUPABASE_URL, SUPABASE_ANON_KEY } = window.APP_CONFIG;
-
       const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
       // DOM
@@ -351,16 +215,13 @@
       const showLoginError = (text) => {
         loginMsg.innerHTML = `<div class="error">${escapeHtml(text)}</div>`;
       };
-
       const showCaptureError = (text) => {
         captureMsg.innerHTML = `<div class="error">${escapeHtml(text)}</div>`;
       };
-
       const showCaptureSuccess = (text) => {
         captureMsg.innerHTML = `<div class="success">${escapeHtml(text)}</div>`;
         setTimeout(() => captureMsg.innerHTML = "", 1200);
       };
-
       const showCaptureInfo = (text) => {
         captureMsg.innerHTML = `<div class="info">${escapeHtml(text)}</div>`;
       };
