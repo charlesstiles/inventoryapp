@@ -171,11 +171,22 @@
       border-radius: 10px;
     }
 
+    /* ✅ IMPORTANT: use height-based layout + force contain so the preview doesn't crop/zoom */
     #scannerArea {
       position: relative;
       width: 100%;
-      aspect-ratio: 3 / 4;
+      height: 70vh;
       background: #000;
+      overflow: hidden;
+      border-radius: 0;
+    }
+    #scannerArea video,
+    #scannerArea canvas {
+      position: absolute !important;
+      top: 0; left: 0;
+      width: 100% !important;
+      height: 100% !important;
+      object-fit: contain !important; /* prevents crop/zoom */
     }
 
     .scan-guide {
@@ -184,6 +195,7 @@
       display: grid;
       place-items: center;
       pointer-events: none;
+      z-index: 5;
     }
     .scan-frame {
       width: 80%;
@@ -279,9 +291,9 @@
 
   <script>
     document.addEventListener("DOMContentLoaded", () => {
-      // ✅ CONFIG: add your anon public key (NOT service role)
+      // ✅ CONFIG: paste your CURRENT anon public key (NOT secret/service role)
       const SUPABASE_URL = "https://htmqdzvepyhpklrykjgh.supabase.co";
-      const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh0bXFkenZlcHlocGtscnlramdoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc0NzAzMjEsImV4cCI6MjA4MzA0NjMyMX0.nC_2KfGq6LGUhYjNQTXMFM_7Q_P0MflXEhV_GP1D16M";
+      const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh0bXFkenZlcHlocGtscnlramdoIiwicm9sZSI6ImFub24iLCJpYXQiOj";
 
       if (!window.supabase || !window.supabase.createClient) {
         alert("Supabase JS library failed to load. Check your network and refresh.");
@@ -318,7 +330,7 @@
 
       const escapeHtml = (str) =>
         String(str).replace(/[&<>"']/g, s => ({
-          "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"
+          "&":"&amp;","<":"&lt;",">":"&gt;", "\"":"&quot;","'":"&#39;"
         }[s]));
 
       const showLoginError = (text) => {
@@ -455,7 +467,7 @@
       });
 
       // ----------------------------
-      // Scanner (Code 39) - tuned for SMALL printed labels + Full ASCII lowercase decode
+      // Scanner (Code 39) - tuned + fixes for Android "snap zoom" + Full ASCII lowercase decode
       // ----------------------------
       let scannerRunning = false;
       let lastDetectedAt = 0;
@@ -498,16 +510,31 @@
         return decodeCode39FullASCII(raw);
       }
 
+      // ✅ Use moderate 4:3 resolution to reduce cropping/“snap zoom” on many Android devices
       function getCameraConstraints() {
         return {
-          facingMode: "environment",
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
-          advanced: [
-            { focusMode: "continuous" },
-            { zoom: 2 }
-          ]
+          facingMode: { ideal: "environment" },
+          aspectRatio: { ideal: 4 / 3 },
+          width:  { ideal: 1280 },
+          height: { ideal: 960 }
         };
+      }
+
+      // ✅ If browser exposes zoom capability, force it to minimum after start.
+      async function forceMinZoomIfSupported() {
+        try {
+          const ca = Quagga.CameraAccess;
+          const track = (ca && typeof ca.getActiveTrack === "function") ? ca.getActiveTrack() : null;
+          if (!track) return;
+
+          const caps = track.getCapabilities ? track.getCapabilities() : null;
+          if (!caps || !caps.zoom) return;
+
+          const minZoom = (caps.zoom.min != null) ? caps.zoom.min : 1;
+          await track.applyConstraints({ advanced: [{ zoom: minZoom }] });
+        } catch (_) {
+          // Some browsers ignore/forbid zoom constraints; that's fine.
+        }
       }
 
       function startScanner() {
@@ -528,10 +555,10 @@
           },
           numOfWorkers: 0,
           frequency: 10,
-          decoder: {
-            readers: ["code_39_reader"]
-          },
+          decoder: { readers: ["code_39_reader"] },
           locate: true,
+
+          // Wider scan region for reliability; we can tighten later for speed.
           area: {
             top: "20%",
             right: "5%",
@@ -545,8 +572,12 @@
             scanErr.textContent = "Scanner init failed: " + (err.message || String(err));
             return;
           }
+
           Quagga.start();
           scannerRunning = true;
+
+          // Let camera settle, then try forcing minimum zoom.
+          setTimeout(() => { forceMinZoomIfSupported(); }, 250);
         });
 
         Quagga.onProcessed((result) => {
@@ -610,4 +641,3 @@
   </script>
 </body>
 </html>
-
