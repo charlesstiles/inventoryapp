@@ -36,10 +36,10 @@ window.APP_NAV = {
       return a;
     };
 
-    // Inline links (desktop)
+    // Desktop inline
     for (const link of this.links) inline.appendChild(makeLink(link));
 
-    // Dropdown links (mobile)
+    // Mobile dropdown
     for (const link of this.links) {
       const a = makeLink(link);
       a.setAttribute("role", "menuitem");
