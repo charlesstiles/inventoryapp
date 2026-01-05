@@ -14,6 +14,9 @@
   <!-- Shared config -->
   <script src="./config.js"></script>
 
+      <!-- Shared navigation (add navigation.js at repo root) -->
+  <script src="./navigation.js"></script>
+
   <style>
     body {
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
@@ -255,8 +258,7 @@
   <header>
     <h1>Container Contents <span id="countPill" class="countpill hidden">0</span></h1>
     <div class="nav">
-      <a class="link-btn" href="./capture.html">Capture</a>
-      <a class="link-btn" href="./search.html">Search</a>
+    <div id="navBar" class="nav"></div>
     </div>
   </header>
 
@@ -350,6 +352,8 @@
       const scannerCloseBtn = document.getElementById("scannerCloseBtn");
       const lastScan = document.getElementById("lastScan");
       const scanErr = document.getElementById("scanErr");
+
+      window.APP_NAV.render("navBar");
 
       const escapeHtml = (str) =>
         String(str).replace(/[&<>"']/g, s => ({
