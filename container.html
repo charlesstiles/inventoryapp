@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Container Contents</title>
 
+  <link rel="stylesheet" href="./styles.css">
+
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.8.4/dist/quagga.min.js"></script>
 
@@ -12,179 +14,58 @@
   <script src="./navigation.js"></script>
 
   <style>
-    body {
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-      background: #f8fafc;
-      margin: 0;
-      padding: 16px;
-      color: #0f172a;
-    }
-
-    header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      margin-bottom: 10px;
-    }
-
-    h1 { font-size: 20px; margin: 0; }
-
-    /* --- Navigation (responsive hamburger) --- */
-    #navBar { display: flex; justify-content: flex-end; }
-    .navWrap { position: relative; display: flex; align-items: center; gap: 10px; }
-    .navInline { display: flex; gap: 10px; align-items: center; }
-    .navBurger {
-      display: none;
-      width: auto;
-      padding: 8px 10px;
-      border-radius: 10px;
-      border: 1px solid #1e3a8a;
-      background: #fff;
-      color: #1e3a8a;
-      font-weight: 900;
-      cursor: pointer;
-    }
-    .navLink {
-      display: inline-block;
-      padding: 8px 10px;
-      border-radius: 10px;
-      border: 1px solid #1e3a8a;
-      background: #fff;
-      color: #1e3a8a;
-      text-decoration: none;
-      font-weight: 900;
-      font-size: 14px;
-      line-height: 1;
-    }
-    .navLink.active { background: #1e3a8a; color: #fff; }
-    .navMenu {
-      position: absolute;
-      top: 44px;
-      right: 0;
-      min-width: 160px;
-      background: #fff;
-      border: 1px solid #e2e8f0;
-      border-radius: 12px;
-      box-shadow: 0 10px 20px rgba(15,23,42,0.18);
-      padding: 8px;
-      display: grid;
-      gap: 8px;
-      z-index: 2000;
-    }
-    .hidden { display: none !important; }
-    @media (max-width: 520px) {
-      .navInline { display: none; }
-      .navBurger { display: inline-block; }
-      .navLink { width: 100%; }
-    }
-
-    .card {
-      background: #fff;
-      border: 1px solid #e2e8f0;
-      border-radius: 12px;
-      padding: 14px;
-      margin-top: 12px;
-      box-shadow: 0 1px 2px rgba(15,23,42,0.06);
-    }
-
-    label {
-      display: block;
-      margin-top: 10px;
-      font-weight: 600;
-      color: #475569;
-      font-size: 14px;
-    }
-
-    input, button {
-      width: 100%;
-      padding: 12px;
-      margin-top: 6px;
-      font-size: 16px;
-      border-radius: 10px;
-      border: 1px solid #cbd5e1;
-      box-sizing: border-box;
-      outline: none;
-    }
-
-    input:focus {
-      border-color: #1e3a8a;
-      box-shadow: 0 0 0 3px rgba(30,58,138,0.15);
-    }
-
-    .btn {
-      background: #1e3a8a;
-      color: #fff;
-      border: none;
-      font-weight: 900;
-      cursor: pointer;
-      margin-top: 12px;
-    }
-
-    .btn:disabled {
-      background: #cbd5e1;
-      color: #64748b;
-      cursor: not-allowed;
-      box-shadow: none;
-      opacity: 1;
-    }
-
-    .btn-secondary {
-      background: #fff;
-      color: #1e3a8a;
-      border: 1px solid #1e3a8a;
-      font-weight: 900;
-      cursor: pointer;
-      margin-top: 12px;
-    }
-
-    .row3 {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
-      gap: 10px;
-      margin-top: 10px;
-    }
-
-    .success, .error, .info {
-      padding: 10px;
-      margin-top: 12px;
-      border-radius: 10px;
-      font-weight: 900;
-      text-align: center;
-      color: #fff;
-    }
-    .success { background: #16a34a; }
-    .error { background: #dc2626; }
-    .info { background: #0ea5e9; }
-
+    /* Page-specific: table, thumbs, shimmer, modal, scanner */
     table {
       width: 100%;
       border-collapse: collapse;
       margin-top: 14px;
       font-size: 14px;
     }
-
     th, td {
       padding: 10px;
       border-bottom: 1px solid #e2e8f0;
       text-align: left;
       vertical-align: top;
     }
-
     th { background: #f1f5f9; font-weight: 900; }
     tr:hover { background: #f8fafc; }
     tr.clickable { cursor: pointer; }
 
-    .muted { color: #64748b; font-size: 12px; }
-
-    .thumb {
+    .thumbWrap {
       width: 44px;
       height: 44px;
       border-radius: 10px;
-      object-fit: cover;
       border: 1px solid #e2e8f0;
+      overflow: hidden;
+      background: #f1f5f9;
+      position: relative;
+    }
+
+    img.thumb {
+      width: 44px;
+      height: 44px;
+      object-fit: cover;
+      display: block;
+      opacity: 0;
+      transition: opacity 160ms ease;
       background: #f1f5f9;
     }
+    img.thumb.loaded { opacity: 1; }
+
+    .shimmer::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(
+        90deg,
+        rgba(226,232,240,0.0) 0%,
+        rgba(226,232,240,0.7) 50%,
+        rgba(226,232,240,0.0) 100%
+      );
+      transform: translateX(-100%);
+      animation: shimmer 1.1s infinite;
+    }
+    @keyframes shimmer { 100% { transform: translateX(100%); } }
 
     /* Modal */
     .modal {
@@ -196,7 +77,6 @@
       padding: 14px;
       box-sizing: border-box;
     }
-
     .modal-inner {
       max-width: 900px;
       margin: 0 auto;
@@ -206,7 +86,6 @@
       border: 1px solid rgba(226,232,240,0.25);
       box-shadow: 0 10px 30px rgba(0,0,0,0.35);
     }
-
     .modal-header {
       display: flex;
       align-items: center;
@@ -217,28 +96,24 @@
       color: #fff;
       font-weight: 900;
     }
-
     .modal-header .meta {
       font-weight: 800;
       font-size: 13px;
       color: #cbd5e1;
       margin-top: 2px;
     }
-
     .modal-header button {
       width: auto;
       margin-top: 0;
       padding: 10px 12px;
       border-radius: 10px;
     }
-
     .modal-body {
       background: #000;
       display: grid;
       place-items: center;
       padding: 8px;
     }
-
     .modal-body img {
       max-width: 100%;
       max-height: 75vh;
@@ -257,7 +132,6 @@
       padding: 16px;
       box-sizing: border-box;
     }
-
     .overlay-inner {
       width: 100%;
       max-width: 720px;
@@ -268,7 +142,6 @@
       overflow: hidden;
       box-shadow: 0 10px 30px rgba(0,0,0,0.35);
     }
-
     .overlay-header {
       display: flex;
       justify-content: space-between;
@@ -279,14 +152,12 @@
       color: #fff;
       font-weight: 900;
     }
-
     .overlay-header button {
       width: auto;
       margin-top: 0;
       padding: 10px 12px;
       border-radius: 10px;
     }
-
     #scannerArea {
       position: relative;
       width: 100%;
@@ -302,7 +173,6 @@
       height: 100% !important;
       object-fit: contain !important;
     }
-
     .scan-guide {
       position: absolute;
       inset: 0;
@@ -318,7 +188,6 @@
       border-radius: 14px;
       box-shadow: 0 0 0 2000px rgba(0,0,0,0.25);
     }
-
     .overlay-footer {
       padding: 12px;
       background: #0f172a;
@@ -326,9 +195,9 @@
       font-size: 13px;
       line-height: 1.35;
     }
-
     .mono {
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+        "Liberation Mono", "Courier New", monospace;
       font-weight: 700;
     }
   </style>
@@ -425,7 +294,7 @@
       const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
       const BUCKET = "item-photos";
-      const signedUrlCache = new Map(); // photo_path -> signedUrl
+      const signedUrlCache = new Map(); // photo_path -> signed url
 
       // DOM
       const loginCard = document.getElementById("loginCard");
@@ -523,12 +392,11 @@
       containerInput.addEventListener("change", updateShowButtonState);
       updateShowButtonState();
 
-      // Enter triggers show
       containerInput.addEventListener("keydown", (e) => {
         if (e.key === "Enter" && !showBtn.disabled) showBtn.click();
       });
 
-      // Signed URL helper
+      // -------- Signed URL batching + cache --------
       async function getSignedUrl(photoPath) {
         if (!photoPath) return null;
         if (signedUrlCache.has(photoPath)) return signedUrlCache.get(photoPath);
@@ -540,7 +408,16 @@
         return data.signedUrl;
       }
 
-      // Modal
+      async function preSignBatch(photoPaths, batchSize = 25) {
+        const needed = photoPaths.filter(p => p && !signedUrlCache.has(p));
+        for (let i = 0; i < needed.length; i += batchSize) {
+          const slice = needed.slice(i, i + batchSize);
+          await Promise.all(slice.map(p => getSignedUrl(p)));
+          await new Promise(r => setTimeout(r, 0));
+        }
+      }
+
+      // -------- Modal --------
       function openModal({ title, meta, imgUrl }) {
         modalTitle.textContent = title || "Photo";
         modalMeta.textContent = meta || "";
@@ -558,36 +435,46 @@
       modalCloseBtn.addEventListener("click", closeModal);
       photoModal.addEventListener("click", (e) => { if (e.target === photoModal) closeModal(); });
 
-      // Lazy-load thumbnails via IntersectionObserver
+      // -------- Lazy load thumbs --------
       let thumbObserver = null;
       function ensureThumbObserver() {
         if (thumbObserver) return;
         thumbObserver = new IntersectionObserver(async (entries) => {
           for (const entry of entries) {
             if (!entry.isIntersecting) continue;
+
             const img = entry.target;
             const path = img.getAttribute("data-photo-path");
             if (!path) { thumbObserver.unobserve(img); continue; }
             if (img.getAttribute("data-loaded") === "1") { thumbObserver.unobserve(img); continue; }
 
-            const url = await getSignedUrl(path);
-            if (url) img.src = url;
+            const url = signedUrlCache.get(path) || await getSignedUrl(path);
+            if (url) {
+              img.src = url;
+              img.onload = () => img.classList.add("loaded");
+              img.onerror = () => img.classList.add("loaded");
+            }
             img.setAttribute("data-loaded", "1");
+
+            const wrap = img.closest(".thumbWrap");
+            if (wrap) wrap.classList.remove("shimmer");
+
             thumbObserver.unobserve(img);
           }
-        }, { root: null, rootMargin: "200px", threshold: 0.01 });
+        }, { root: null, rootMargin: "250px", threshold: 0.01 });
       }
 
-      // Show contents
+      // -------- Show Contents --------
       showBtn.addEventListener("click", async () => {
         showBtn.disabled = true;
         msg.innerHTML = "";
         clearResults();
 
-        try {
-          const code = containerInput.value.trim();
-          if (!code) { show("error", "Enter or scan a container code."); return; }
+        const code = containerInput.value.trim();
+        if (!code) { show("error", "Enter or scan a container code."); updateShowButtonState(); return; }
 
+        try {
+          show("info", "Loading items…");
           const { data, error } = await sb
             .from("items")
             .select("item_description, created_at, photo_path")
@@ -598,6 +485,7 @@
           if (error) { show("error", error.message); return; }
           if (!data || data.length === 0) { show("info", `No items found in ${code}.`); return; }
 
+          const paths = data.map(r => r.photo_path).filter(Boolean);
           ensureThumbObserver();
 
           for (const row of data) {
@@ -612,24 +500,27 @@
             tdCreated.className = "muted";
             tdCreated.textContent = new Date(row.created_at).toLocaleString();
 
-            let photoPath = row.photo_path || "";
+            const photoPath = row.photo_path || "";
 
             if (photoPath) {
+              const wrap = document.createElement("div");
+              wrap.className = "thumbWrap shimmer";
+
               const img = document.createElement("img");
               img.className = "thumb";
               img.alt = "Item photo";
               img.setAttribute("data-photo-path", photoPath);
               img.setAttribute("data-loaded", "0");
-              tdPhoto.appendChild(img);
 
-              // Observe for lazy-load
+              wrap.appendChild(img);
+              tdPhoto.appendChild(wrap);
+
               thumbObserver.observe(img);
             } else {
               tdPhoto.textContent = "—";
               tdPhoto.className = "muted";
             }
 
-            // Row-click opens modal (not just thumbnail)
             tr.addEventListener("click", async () => {
               if (!photoPath) return;
               const fullUrl = signedUrlCache.get(photoPath) || await getSignedUrl(photoPath);
@@ -640,19 +531,6 @@
               });
             });
 
-            tdPhoto.addEventListener("click", (e) => { e.stopPropagation(); });
-            // If clicking directly on image, also open modal
-            if (photoPath) {
-              tdPhoto.addEventListener("click", async () => {
-                const fullUrl = signedUrlCache.get(photoPath) || await getSignedUrl(photoPath);
-                openModal({
-                  title: row.item_description || "Item Photo",
-                  meta: `Container: ${code} • ${new Date(row.created_at).toLocaleString()}`,
-                  imgUrl: fullUrl || ""
-                });
-              });
-            }
-
             tr.appendChild(tdPhoto);
             tr.appendChild(tdDesc);
             tr.appendChild(tdCreated);
@@ -660,7 +538,10 @@
           }
 
           table.classList.remove("hidden");
-          show("success", `${data.length} item(s) loaded for ${code}. Tap a row to view photo.`);
+          show("success", `${data.length} item(s) loaded for ${code}. Thumbnails load as you scroll.`);
+
+          setTimeout(() => { preSignBatch(paths, 25); }, 0);
+
         } catch (e) {
           show("error", e?.message || String(e));
         } finally {
