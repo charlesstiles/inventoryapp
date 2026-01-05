@@ -14,101 +14,7 @@
   <script src="./navigation.js"></script>
 
   <style>
-    /* Page-specific styles only (scanner overlay + small helpers) */
-    .small {
-      color: #64748b;
-      font-size: 12px;
-      margin-top: 10px;
-      line-height: 1.4;
-    }
-
-    /* Scanner overlay */
-    .overlay {
-      position: fixed;
-      inset: 0;
-      background: rgba(15, 23, 42, 0.85);
-      display: none;
-      z-index: 9999;
-      padding: 16px;
-      box-sizing: border-box;
-    }
-
-    .overlay-inner {
-      width: 100%;
-      max-width: 720px;
-      margin: 0 auto;
-      background: #0b1220;
-      border: 1px solid rgba(226,232,240,0.2);
-      border-radius: 16px;
-      overflow: hidden;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.35);
-    }
-
-    .overlay-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 10px;
-      padding: 12px;
-      background: #0f172a;
-      color: #fff;
-      font-weight: 900;
-    }
-
-    .overlay-header button {
-      width: auto;
-      margin-top: 0;
-      padding: 10px 12px;
-      border-radius: 10px;
-    }
-
-    #scannerArea {
-      position: relative;
-      width: 100%;
-      height: 70vh;
-      background: #000;
-      overflow: hidden;
-    }
-
-    #scannerArea video,
-    #scannerArea canvas {
-      position: absolute !important;
-      top: 0; left: 0;
-      width: 100% !important;
-      height: 100% !important;
-      object-fit: contain !important;
-    }
-
-    .scan-guide {
-      position: absolute;
-      inset: 0;
-      display: grid;
-      place-items: center;
-      pointer-events: none;
-      z-index: 5;
-    }
-
-    .scan-frame {
-      width: 80%;
-      height: 35%;
-      border: 3px solid rgba(255,255,255,0.85);
-      border-radius: 14px;
-      box-shadow: 0 0 0 2000px rgba(0,0,0,0.25);
-    }
-
-    .overlay-footer {
-      padding: 12px;
-      background: #0f172a;
-      color: #e2e8f0;
-      font-size: 13px;
-      line-height: 1.35;
-    }
-
-    .mono {
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-        "Liberation Mono", "Courier New", monospace;
-      font-weight: 700;
-    }
+    /* Page-specific only */
   </style>
 </head>
 
@@ -209,22 +115,16 @@
 
       const escapeHtml = (str) =>
         String(str).replace(/[&<>"']/g, s => ({
-          "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"
+          "&":"&amp;","<":"&lt;",">":"&gt;", "\"":"&quot;","'":"&#39;"
         }[s]));
 
-      const showLoginError = (text) => {
-        loginMsg.innerHTML = `<div class="error">${escapeHtml(text)}</div>`;
-      };
-      const showCaptureError = (text) => {
-        captureMsg.innerHTML = `<div class="error">${escapeHtml(text)}</div>`;
-      };
+      const showLoginError = (text) => loginMsg.innerHTML = `<div class="error">${escapeHtml(text)}</div>`;
+      const showCaptureError = (text) => captureMsg.innerHTML = `<div class="error">${escapeHtml(text)}</div>`;
       const showCaptureSuccess = (text) => {
         captureMsg.innerHTML = `<div class="success">${escapeHtml(text)}</div>`;
         setTimeout(() => captureMsg.innerHTML = "", 1200);
       };
-      const showCaptureInfo = (text) => {
-        captureMsg.innerHTML = `<div class="info">${escapeHtml(text)}</div>`;
-      };
+      const showCaptureInfo = (text) => captureMsg.innerHTML = `<div class="info">${escapeHtml(text)}</div>`;
 
       async function refreshUI() {
         const { data } = await sb.auth.getSession();
@@ -240,7 +140,6 @@
         }
       }
 
-      // Login
       signInBtn.addEventListener("click", async () => {
         signInBtn.disabled = true;
         loginMsg.innerHTML = "";
@@ -260,25 +159,21 @@
         }
       });
 
-      // Logout
       logoutBtn.addEventListener("click", async () => {
         await stopScannerIfRunning();
         await sb.auth.signOut();
         await refreshUI();
       });
 
-      // Change container
       changeContainerBtn.addEventListener("click", () => {
         containerInput.value = "";
         containerInput.focus();
         showCaptureInfo("Enter/scan a new container.");
       });
 
-      // Save item (auto-create container)
       saveBtn.addEventListener("click", async () => {
         saveBtn.disabled = true;
         captureMsg.innerHTML = "";
-
         try {
           const containerCode = containerInput.value.trim();
           const description = descInput.value.trim();
@@ -325,9 +220,7 @@
         }
       });
 
-      // ----------------------------
-      // Scanner (Code 39) - stable preview + Full ASCII lowercase decode
-      // ----------------------------
+      // Scanner
       let scannerRunning = false;
       let lastDetectedAt = 0;
       let didDecode = false;
@@ -339,12 +232,10 @@
       function decodeCode39FullASCII(s) {
         return String(s || "").replace(/\+([A-Z])/g, (_, ch) => ch.toLowerCase());
       }
-
       function normalizeCode39(value) {
         const raw = String(value || "").trim().replace(/^\*+|\*+$/g, "");
         return decodeCode39FullASCII(raw);
       }
-
       function getCameraConstraints() {
         return {
           facingMode: { ideal: "environment" },
@@ -353,7 +244,6 @@
           height: { ideal: 960 }
         };
       }
-
       async function forceMinZoomIfSupported() {
         try {
           const ca = Quagga.CameraAccess;
@@ -374,7 +264,6 @@
         scannerOverlay.setAttribute("aria-hidden", "false");
         startScanner();
       }
-
       async function closeScanner() {
         await stopScannerIfRunning();
         scannerOverlay.style.display = "none";
@@ -452,7 +341,6 @@
         showCaptureInfo("Container set: " + code);
       }
 
-      // Init
       refreshUI();
     });
   </script>
