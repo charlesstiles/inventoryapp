@@ -1,3 +1,10 @@
+<!-- =========================
+     container.html (FULL FILE)
+     =========================
+     - Requires login before showing container UI
+     - Sets window.APP_SUPABASE
+     - Nav hides Search/Container when logged out
+-->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -12,10 +19,6 @@
 
   <script src="./config.js"></script>
   <script src="./navigation.js"></script>
-
-  <style>
-    /* Page-specific only */
-  </style>
 </head>
 
 <body>
@@ -44,7 +47,7 @@
     <div class="row3">
       <button id="scanBtn" class="btn-secondary" type="button">Scan Container</button>
       <button id="showBtn" class="btn" type="button" disabled>Show Contents</button>
-      <button id="logoutBtn" class="btn-secondary" type="button">Logout</button>
+      <div></div>
     </div>
 
     <div id="msg"></div>
@@ -98,9 +101,7 @@
   </div>
 
   <script>
-    document.addEventListener("DOMContentLoaded", () => {
-      if (window.APP_NAV) window.APP_NAV.render("navBar");
-
+    document.addEventListener("DOMContentLoaded", async () => {
       if (!window.APP_CONFIG || !window.APP_CONFIG.SUPABASE_URL || !window.APP_CONFIG.SUPABASE_ANON_KEY) {
         alert("Missing config.js settings.");
         return;
@@ -108,10 +109,13 @@
       const { SUPABASE_URL, SUPABASE_ANON_KEY } = window.APP_CONFIG;
       const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+      window.APP_SUPABASE = sb;
+
+      if (window.APP_NAV) await window.APP_NAV.render("navBar");
+
       const BUCKET = "item-photos";
       const signedUrlCache = new Map();
 
-      // DOM
       const loginCard = document.getElementById("loginCard");
       const mainCard = document.getElementById("mainCard");
       const emailInput = document.getElementById("emailInput");
@@ -122,7 +126,6 @@
       const containerInput = document.getElementById("containerInput");
       const scanBtn = document.getElementById("scanBtn");
       const showBtn = document.getElementById("showBtn");
-      const logoutBtn = document.getElementById("logoutBtn");
 
       const msg = document.getElementById("msg");
       const table = document.getElementById("table");
@@ -159,15 +162,26 @@
 
       async function refreshUI() {
         const { data } = await sb.auth.getSession();
-        if (data?.session) {
+        const authed = !!data?.session;
+
+        if (authed) {
           loginCard.classList.add("hidden");
           mainCard.classList.remove("hidden");
+          emailInput.value = "";
+          passwordInput.value = "";
+          loginMsg.innerHTML = "";
           containerInput.focus();
         } else {
           mainCard.classList.add("hidden");
           loginCard.classList.remove("hidden");
+          msg.innerHTML = "";
+          clearResults();
+          containerInput.value = "";
+          updateShowButtonState();
           emailInput.focus();
         }
+
+        if (window.APP_NAV) await window.APP_NAV.render("navBar");
       }
 
       // Auth
@@ -192,16 +206,6 @@
         }
       });
 
-      logoutBtn.addEventListener("click", async () => {
-        await stopScannerIfRunning();
-        await sb.auth.signOut();
-        msg.innerHTML = "";
-        clearResults();
-        containerInput.value = "";
-        updateShowButtonState();
-        await refreshUI();
-      });
-
       containerInput.addEventListener("input", updateShowButtonState);
       containerInput.addEventListener("change", updateShowButtonState);
       updateShowButtonState();
@@ -210,7 +214,6 @@
         if (e.key === "Enter" && !showBtn.disabled) showBtn.click();
       });
 
-      // Signed URL caching
       async function getSignedUrl(photoPath) {
         if (!photoPath) return null;
         if (signedUrlCache.has(photoPath)) return signedUrlCache.get(photoPath);
@@ -231,7 +234,6 @@
         }
       }
 
-      // Modal
       function openModal({ title, meta, imgUrl }) {
         modalTitle.textContent = title || "Photo";
         modalMeta.textContent = meta || "";
@@ -249,7 +251,6 @@
       modalCloseBtn.addEventListener("click", closeModal);
       photoModal.addEventListener("click", (e) => { if (e.target === photoModal) closeModal(); });
 
-      // Lazy-load thumbs
       let thumbObserver = null;
       function ensureThumbObserver() {
         if (thumbObserver) return;
@@ -438,13 +439,6 @@
           setTimeout(() => { forceMinZoomIfSupported(); }, 250);
         });
 
-        Quagga.onProcessed((result) => {
-          if (!scannerRunning || didDecode) return;
-          const hasCandidates = !!(result && result.boxes && result.boxes.length);
-          lastScan.textContent = hasCandidates ? "Scanning… (candidate detected)" : "Scanning…";
-          if (hasCandidates) scanErr.textContent = "";
-        });
-
         Quagga.onDetected(onDetected);
 
         setTimeout(() => {
@@ -459,7 +453,6 @@
         if (!scannerRunning) return;
         try {
           Quagga.offDetected(onDetected);
-          Quagga.offProcessed();
           Quagga.stop();
         } catch (_) {}
         scannerRunning = false;
@@ -482,7 +475,7 @@
         show("info", "Container set: " + code);
       }
 
-      refreshUI();
+      await refreshUI();
     });
   </script>
 </body>
