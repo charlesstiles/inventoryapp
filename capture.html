@@ -1,3 +1,10 @@
+<!-- =========================
+     capture.html (FULL FILE)
+     =========================
+     - Sets window.APP_SUPABASE
+     - Uses nav with auth-aware links/logout
+     - No Logout button in page
+-->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -12,10 +19,6 @@
 
   <script src="./config.js"></script>
   <script src="./navigation.js"></script>
-
-  <style>
-    /* Page-specific only */
-  </style>
 </head>
 
 <body>
@@ -46,7 +49,7 @@
     <div class="row3">
       <button id="scanContainerBtn" type="button" class="btn-secondary">Scan Container</button>
       <button id="changeContainerBtn" type="button" class="btn-secondary">Change Container</button>
-      <button id="logoutBtn" type="button" class="btn-secondary">Logout</button>
+      <div></div>
     </div>
 
     <label for="photoInput">Photo (required)</label>
@@ -81,15 +84,18 @@
   </div>
 
   <script>
-    document.addEventListener("DOMContentLoaded", () => {
-      if (window.APP_NAV) window.APP_NAV.render("navBar");
-
+    document.addEventListener("DOMContentLoaded", async () => {
       if (!window.APP_CONFIG || !window.APP_CONFIG.SUPABASE_URL || !window.APP_CONFIG.SUPABASE_ANON_KEY) {
         alert("Missing config.js settings.");
         return;
       }
       const { SUPABASE_URL, SUPABASE_ANON_KEY } = window.APP_CONFIG;
       const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+      // Make client available for nav (auth-aware links + logout)
+      window.APP_SUPABASE = sb;
+
+      if (window.APP_NAV) await window.APP_NAV.render("navBar");
 
       // DOM
       const loginCard = document.getElementById("loginCard");
@@ -105,7 +111,6 @@
       const photoInput = document.getElementById("photoInput");
       const descInput = document.getElementById("descInput");
       const saveBtn = document.getElementById("saveBtn");
-      const logoutBtn = document.getElementById("logoutBtn");
       const captureMsg = document.getElementById("captureMsg");
 
       const scannerOverlay = document.getElementById("scannerOverlay");
@@ -138,8 +143,10 @@
           loginCard.classList.remove("hidden");
           emailInput.focus();
         }
+        if (window.APP_NAV) await window.APP_NAV.render("navBar");
       }
 
+      // Auth
       signInBtn.addEventListener("click", async () => {
         signInBtn.disabled = true;
         loginMsg.innerHTML = "";
@@ -157,12 +164,6 @@
         } finally {
           signInBtn.disabled = false;
         }
-      });
-
-      logoutBtn.addEventListener("click", async () => {
-        await stopScannerIfRunning();
-        await sb.auth.signOut();
-        await refreshUI();
       });
 
       changeContainerBtn.addEventListener("click", () => {
@@ -297,13 +298,6 @@
           setTimeout(() => { forceMinZoomIfSupported(); }, 250);
         });
 
-        Quagga.onProcessed((result) => {
-          if (!scannerRunning || didDecode) return;
-          const hasCandidates = !!(result && result.boxes && result.boxes.length);
-          lastScan.textContent = hasCandidates ? "Scanning… (candidate detected)" : "Scanning…";
-          if (hasCandidates) scanErr.textContent = "";
-        });
-
         Quagga.onDetected(onDetected);
 
         setTimeout(() => {
@@ -318,7 +312,6 @@
         if (!scannerRunning) return;
         try {
           Quagga.offDetected(onDetected);
-          Quagga.offProcessed();
           Quagga.stop();
         } catch (_) {}
         scannerRunning = false;
@@ -341,7 +334,7 @@
         showCaptureInfo("Container set: " + code);
       }
 
-      refreshUI();
+      await refreshUI();
     });
   </script>
 </body>
