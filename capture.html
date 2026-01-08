@@ -1,341 +1,310 @@
-<!-- =========================
-     capture.html (FULL FILE)
-     =========================
-     - Sets window.APP_SUPABASE
-     - Uses nav with auth-aware links/logout
-     - No Logout button in page
--->
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Inventory Capture</title>
-
-  <link rel="stylesheet" href="./styles.css">
-
+  <link rel="stylesheet" href="./styles.css?v=1" />
+  <script src="./config.js?v=1"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.8.4/dist/quagga.min.js"></script>
-
-  <script src="./config.js"></script>
-  <script src="./navigation.js"></script>
+  <script src="./navigation.js?v=1"></script>
+  <!-- QuaggaJS for Code39 scan -->
+  <script src="https://cdn.jsdelivr.net/npm/quagga@0.12.1/dist/quagga.min.js"></script>
 </head>
-
 <body>
   <header>
     <h1>Inventory Capture</h1>
     <div id="navBar"></div>
   </header>
 
-  <!-- Login -->
-  <div id="loginCard" class="card">
-    <label for="emailInput">Email</label>
-    <input id="emailInput" type="email" placeholder="you@example.com" autocomplete="email" />
+  <!-- AUTH CARD -->
+  <div id="authCard" class="card">
+    <label for="email">Email</label>
+    <input id="email" type="email" autocomplete="username" />
 
-    <label for="passwordInput">Password</label>
-    <input id="passwordInput" type="password" placeholder="Password" autocomplete="current-password" />
+    <label for="password">Password</label>
+    <input id="password" type="password" autocomplete="current-password" />
 
-    <button id="signInBtn" type="button" class="btn">Sign In</button>
-
-    <div class="small">Tip: open with <b>?v=123</b> to bust cache.</div>
-    <div id="loginMsg"></div>
+    <button id="btnSignIn" class="btn">Sign In</button>
+    <div id="authMsg" class="error hidden"></div>
+    <div class="small muted">Tip: add <span class="mono">?v=123</span> to bust cache.</div>
   </div>
 
-  <!-- Capture -->
+  <!-- CAPTURE CARD -->
   <div id="captureCard" class="card hidden">
-    <label for="containerInput">Container Code</label>
-    <input id="containerInput" placeholder="e.g. TOTE0076" />
+    <label for="containerCode">Container Code</label>
+    <input id="containerCode" type="text" placeholder="e.g. TOTE0076" />
 
     <div class="row3">
-      <button id="scanContainerBtn" type="button" class="btn-secondary">Scan Container</button>
-      <button id="changeContainerBtn" type="button" class="btn-secondary">Change Container</button>
-      <div></div>
+      <button id="btnScanContainer" class="btn-secondary">Scan Container</button>
+      <button id="btnChangeContainer" class="btn-secondary">Change Container</button>
+      <button id="btnClearContainer" class="btn-secondary">Clear</button>
     </div>
 
-    <label for="photoInput">Photo (required)</label>
-    <input id="photoInput" type="file" accept="image/*" capture="environment" />
+    <label for="photo">Photo (required)</label>
+    <input id="photo" type="file" accept="image/*" capture="environment" />
 
-    <label for="descInput">Description</label>
-    <textarea id="descInput" placeholder="Item description"></textarea>
+    <label for="description">Description</label>
+    <textarea id="description" rows="3" placeholder="Item description"></textarea>
 
-    <button id="saveBtn" type="button" class="btn">Save Item</button>
+    <button id="btnSave" class="btn">Save Item</button>
 
-    <div id="captureMsg"></div>
+    <div id="saveMsg" class="success hidden"></div>
+    <div id="errMsg" class="error hidden"></div>
+
+    <div class="small muted" id="lastScan">Last scan: —</div>
   </div>
 
-  <!-- Scanner Overlay -->
-  <div id="scannerOverlay" class="overlay" aria-hidden="true">
+  <!-- SCANNER OVERLAY -->
+  <div id="scanOverlay" class="overlay">
     <div class="overlay-inner">
       <div class="overlay-header">
-        <div>Scan Code 39 Container Label</div>
-        <button id="scannerCloseBtn" class="btn-secondary" type="button">Close</button>
+        <div>
+          Scan Code 39 Container Label
+          <div class="meta">Hold barcode inside the frame. It will auto-fill the container code.</div>
+        </div>
+        <button id="btnScanClose" class="btn-secondary">Close</button>
       </div>
 
       <div id="scannerArea">
-        <div class="scan-guide"><div class="scan-frame"></div></div>
+        <div class="scan-guide">
+          <div class="scan-frame"></div>
+        </div>
       </div>
 
       <div class="overlay-footer">
-        Hold barcode inside the frame. It will auto-fill the container code.
-        <div style="margin-top:8px;">Last scan: <span id="lastScan" class="mono">—</span></div>
-        <div id="scanErr" style="margin-top:8px;color:#fca5a5;font-weight:900;"></div>
+        If it feels “zoomed”, keep the barcode centered in the frame and move the phone back slightly.
       </div>
     </div>
   </div>
 
-  <script>
-    document.addEventListener("DOMContentLoaded", async () => {
-      if (!window.APP_CONFIG || !window.APP_CONFIG.SUPABASE_URL || !window.APP_CONFIG.SUPABASE_ANON_KEY) {
-        alert("Missing config.js settings.");
+<script>
+(() => {
+  // ---- Setup Supabase ----
+  const cfg = window.APP_CONFIG || {};
+  const sb = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
+  window.APP_SUPABASE = sb;
+
+  // ---- DOM ----
+  const authCard = document.getElementById("authCard");
+  const captureCard = document.getElementById("captureCard");
+  const emailEl = document.getElementById("email");
+  const passEl = document.getElementById("password");
+  const btnSignIn = document.getElementById("btnSignIn");
+  const authMsg = document.getElementById("authMsg");
+
+  const containerCodeEl = document.getElementById("containerCode");
+  const btnScanContainer = document.getElementById("btnScanContainer");
+  const btnChangeContainer = document.getElementById("btnChangeContainer");
+  const btnClearContainer = document.getElementById("btnClearContainer");
+
+  const photoEl = document.getElementById("photo");
+  const descEl = document.getElementById("description");
+  const btnSave = document.getElementById("btnSave");
+  const saveMsg = document.getElementById("saveMsg");
+  const errMsg = document.getElementById("errMsg");
+  const lastScan = document.getElementById("lastScan");
+
+  const overlay = document.getElementById("scanOverlay");
+  const btnScanClose = document.getElementById("btnScanClose");
+
+  // ---- Helpers ----
+  function show(el, text) { el.textContent = text || ""; el.classList.remove("hidden"); }
+  function hide(el) { el.classList.add("hidden"); el.textContent = ""; }
+  function normCode39(s) {
+    // Code39 Full ASCII can introduce punctuation; we keep it literal but normalize whitespace.
+    // Also normalize common lowercase input by leaving as-is (your labels might use it).
+    return (s || "").trim().replace(/\s+/g, " ");
+  }
+
+  async function requireSession() {
+    const { data } = await sb.auth.getSession();
+    return data?.session || null;
+  }
+
+  async function setAuthedUI(isAuthed) {
+    if (isAuthed) {
+      authCard.classList.add("hidden");
+      captureCard.classList.remove("hidden");
+    } else {
+      captureCard.classList.add("hidden");
+      authCard.classList.remove("hidden");
+    }
+    // Render nav after APP_SUPABASE exists
+    if (window.APP_NAV?.render) await window.APP_NAV.render("navBar");
+  }
+
+  // ---- Boot ----
+  (async () => {
+    const session = await requireSession();
+    await setAuthedUI(!!session);
+  })();
+
+  // ---- Sign in ----
+  btnSignIn.addEventListener("click", async () => {
+    hide(authMsg);
+    const email = (emailEl.value || "").trim();
+    const password = passEl.value || "";
+    if (!email || !password) return show(authMsg, "Enter email and password.");
+
+    btnSignIn.disabled = true;
+    try {
+      const { error } = await sb.auth.signInWithPassword({ email, password });
+      if (error) return show(authMsg, error.message || "Login failed.");
+      await setAuthedUI(true);
+    } finally {
+      btnSignIn.disabled = false;
+    }
+  });
+
+  // ---- Container buttons ----
+  btnClearContainer.addEventListener("click", () => {
+    containerCodeEl.value = "";
+    containerCodeEl.focus();
+  });
+
+  btnChangeContainer.addEventListener("click", () => {
+    containerCodeEl.focus();
+    containerCodeEl.select();
+  });
+
+  // ---- Scanner ----
+  function stopScanner() {
+    try { Quagga.stop(); } catch (_) {}
+  }
+
+  function openScanner() {
+    hide(errMsg);
+    overlay.style.display = "block";
+
+    // Clear previous
+    stopScanner();
+    lastScan.textContent = "Last scan: —";
+
+    Quagga.init({
+      inputStream: {
+        type: "LiveStream",
+        target: document.querySelector("#scannerArea"),
+        constraints: { facingMode: "environment" },
+        area: { top: "15%", right: "10%", left: "10%", bottom: "15%" }
+      },
+      decoder: {
+        readers: ["code_39_reader"],
+        multiple: false
+      },
+      locate: true,
+      numOfWorkers: 1
+    }, (err) => {
+      if (err) {
+        show(errMsg, "Scanner init failed: " + err.message);
         return;
       }
-      const { SUPABASE_URL, SUPABASE_ANON_KEY } = window.APP_CONFIG;
-      const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-      // Make client available for nav (auth-aware links + logout)
-      window.APP_SUPABASE = sb;
-
-      if (window.APP_NAV) await window.APP_NAV.render("navBar");
-
-      // DOM
-      const loginCard = document.getElementById("loginCard");
-      const captureCard = document.getElementById("captureCard");
-      const emailInput = document.getElementById("emailInput");
-      const passwordInput = document.getElementById("passwordInput");
-      const signInBtn = document.getElementById("signInBtn");
-      const loginMsg = document.getElementById("loginMsg");
-
-      const containerInput = document.getElementById("containerInput");
-      const scanContainerBtn = document.getElementById("scanContainerBtn");
-      const changeContainerBtn = document.getElementById("changeContainerBtn");
-      const photoInput = document.getElementById("photoInput");
-      const descInput = document.getElementById("descInput");
-      const saveBtn = document.getElementById("saveBtn");
-      const captureMsg = document.getElementById("captureMsg");
-
-      const scannerOverlay = document.getElementById("scannerOverlay");
-      const scannerCloseBtn = document.getElementById("scannerCloseBtn");
-      const lastScan = document.getElementById("lastScan");
-      const scanErr = document.getElementById("scanErr");
-
-      const escapeHtml = (str) =>
-        String(str).replace(/[&<>"']/g, s => ({
-          "&":"&amp;","<":"&lt;",">":"&gt;", "\"":"&quot;","'":"&#39;"
-        }[s]));
-
-      const showLoginError = (text) => loginMsg.innerHTML = `<div class="error">${escapeHtml(text)}</div>`;
-      const showCaptureError = (text) => captureMsg.innerHTML = `<div class="error">${escapeHtml(text)}</div>`;
-      const showCaptureSuccess = (text) => {
-        captureMsg.innerHTML = `<div class="success">${escapeHtml(text)}</div>`;
-        setTimeout(() => captureMsg.innerHTML = "", 1200);
-      };
-      const showCaptureInfo = (text) => captureMsg.innerHTML = `<div class="info">${escapeHtml(text)}</div>`;
-
-      async function refreshUI() {
-        const { data } = await sb.auth.getSession();
-        if (data?.session) {
-          loginCard.classList.add("hidden");
-          captureCard.classList.remove("hidden");
-          if (!containerInput.value.trim()) containerInput.focus();
-          else photoInput.focus();
-        } else {
-          captureCard.classList.add("hidden");
-          loginCard.classList.remove("hidden");
-          emailInput.focus();
-        }
-        if (window.APP_NAV) await window.APP_NAV.render("navBar");
-      }
-
-      // Auth
-      signInBtn.addEventListener("click", async () => {
-        signInBtn.disabled = true;
-        loginMsg.innerHTML = "";
-        try {
-          const email = emailInput.value.trim();
-          const password = passwordInput.value;
-          if (!email || !password) { showLoginError("Email and password are required."); return; }
-
-          const { error } = await sb.auth.signInWithPassword({ email, password });
-          if (error) { showLoginError(error.message); return; }
-
-          await refreshUI();
-        } catch (e) {
-          showLoginError(e?.message || String(e));
-        } finally {
-          signInBtn.disabled = false;
-        }
-      });
-
-      changeContainerBtn.addEventListener("click", () => {
-        containerInput.value = "";
-        containerInput.focus();
-        showCaptureInfo("Enter/scan a new container.");
-      });
-
-      saveBtn.addEventListener("click", async () => {
-        saveBtn.disabled = true;
-        captureMsg.innerHTML = "";
-        try {
-          const containerCode = containerInput.value.trim();
-          const description = descInput.value.trim();
-          const file = photoInput.files?.[0];
-
-          if (!containerCode) { showCaptureError("Container code is required."); return; }
-          if (!file) { showCaptureError("Photo is required."); return; }
-          if (!description) { showCaptureError("Description is required."); return; }
-
-          const upsertContainer = await sb
-            .from("containers")
-            .upsert({ container_code: containerCode }, { onConflict: "container_code" });
-
-          if (upsertContainer.error) {
-            showCaptureError("Container create failed: " + upsertContainer.error.message);
-            return;
-          }
-
-          const safeName = (file.name || "photo.jpg").replace(/[^\w.\-]/g, "_");
-          const filePath = `${containerCode}/${Date.now()}_${safeName}`;
-
-          const up = await sb.storage
-            .from("item-photos")
-            .upload(filePath, file, { upsert: false });
-
-          if (up.error) { showCaptureError("Upload failed: " + up.error.message); return; }
-
-          const ins = await sb.from("items").insert({
-            container_code: containerCode,
-            item_description: description,
-            photo_path: filePath
-          });
-
-          if (ins.error) { showCaptureError("Save failed: " + ins.error.message); return; }
-
-          descInput.value = "";
-          photoInput.value = "";
-          showCaptureSuccess("Saved ✓");
-          photoInput.focus();
-        } catch (e) {
-          showCaptureError(e?.message || String(e));
-        } finally {
-          saveBtn.disabled = false;
-        }
-      });
-
-      // Scanner
-      let scannerRunning = false;
-      let lastDetectedAt = 0;
-      let didDecode = false;
-
-      scanContainerBtn.addEventListener("click", () => openScanner());
-      scannerCloseBtn.addEventListener("click", () => closeScanner());
-      scannerOverlay.addEventListener("click", (e) => { if (e.target === scannerOverlay) closeScanner(); });
-
-      function decodeCode39FullASCII(s) {
-        return String(s || "").replace(/\+([A-Z])/g, (_, ch) => ch.toLowerCase());
-      }
-      function normalizeCode39(value) {
-        const raw = String(value || "").trim().replace(/^\*+|\*+$/g, "");
-        return decodeCode39FullASCII(raw);
-      }
-      function getCameraConstraints() {
-        return {
-          facingMode: { ideal: "environment" },
-          aspectRatio: { ideal: 4 / 3 },
-          width:  { ideal: 1280 },
-          height: { ideal: 960 }
-        };
-      }
-      async function forceMinZoomIfSupported() {
-        try {
-          const ca = Quagga.CameraAccess;
-          const track = (ca && typeof ca.getActiveTrack === "function") ? ca.getActiveTrack() : null;
-          if (!track) return;
-          const caps = track.getCapabilities ? track.getCapabilities() : null;
-          if (!caps || !caps.zoom) return;
-          const minZoom = (caps.zoom.min != null) ? caps.zoom.min : 1;
-          await track.applyConstraints({ advanced: [{ zoom: minZoom }] });
-        } catch (_) {}
-      }
-
-      function openScanner() {
-        scanErr.textContent = "";
-        lastScan.textContent = "Scanning…";
-        didDecode = false;
-        scannerOverlay.style.display = "block";
-        scannerOverlay.setAttribute("aria-hidden", "false");
-        startScanner();
-      }
-      async function closeScanner() {
-        await stopScannerIfRunning();
-        scannerOverlay.style.display = "none";
-        scannerOverlay.setAttribute("aria-hidden", "true");
-      }
-
-      function startScanner() {
-        if (scannerRunning) return;
-
-        const config = {
-          inputStream: {
-            type: "LiveStream",
-            target: document.querySelector("#scannerArea"),
-            constraints: getCameraConstraints()
-          },
-          locator: { patchSize: "x-large", halfSample: false },
-          numOfWorkers: 0,
-          frequency: 10,
-          decoder: { readers: ["code_39_reader"] },
-          locate: true,
-          area: { top: "20%", right: "5%", left: "5%", bottom: "20%" }
-        };
-
-        Quagga.init(config, (err) => {
-          if (err) {
-            scanErr.textContent = "Scanner init failed: " + (err.message || String(err));
-            return;
-          }
-          Quagga.start();
-          scannerRunning = true;
-          setTimeout(() => { forceMinZoomIfSupported(); }, 250);
-        });
-
-        Quagga.onDetected(onDetected);
-
-        setTimeout(() => {
-          if (scannerRunning && !didDecode) {
-            scanErr.textContent =
-              "No decode yet. Move closer, center barcode, tilt to reduce glare, or increase label size.";
-          }
-        }, 7000);
-      }
-
-      async function stopScannerIfRunning() {
-        if (!scannerRunning) return;
-        try {
-          Quagga.offDetected(onDetected);
-          Quagga.stop();
-        } catch (_) {}
-        scannerRunning = false;
-      }
-
-      async function onDetected(result) {
-        const now = Date.now();
-        if (now - lastDetectedAt < 900) return;
-        lastDetectedAt = now;
-
-        const code = normalizeCode39(result?.codeResult?.code);
-        if (!code) return;
-
-        didDecode = true;
-        lastScan.textContent = code;
-        containerInput.value = code;
-
-        await closeScanner();
-        photoInput.focus();
-        showCaptureInfo("Container set: " + code);
-      }
-
-      await refreshUI();
+      Quagga.start();
     });
-  </script>
+
+    Quagga.offDetected();
+    Quagga.onDetected((result) => {
+      const code = normCode39(result?.codeResult?.code);
+      if (!code) return;
+      containerCodeEl.value = code;
+      lastScan.textContent = "Last scan: " + code;
+      overlay.style.display = "none";
+      stopScanner();
+    });
+  }
+
+  btnScanContainer.addEventListener("click", openScanner);
+
+  btnScanClose.addEventListener("click", () => {
+    overlay.style.display = "none";
+    stopScanner();
+  });
+
+  // ---- Save Item ----
+  btnSave.addEventListener("click", async () => {
+    hide(saveMsg); hide(errMsg);
+
+    const session = await requireSession();
+    if (!session) return show(errMsg, "Please sign in.");
+
+    const container_code = normCode39(containerCodeEl.value);
+    const desc = (descEl.value || "").trim();
+    const file = photoEl.files?.[0] || null;
+
+    if (!container_code) return show(errMsg, "Container Code is required.");
+    if (!file) return show(errMsg, "Photo is required.");
+
+    btnSave.disabled = true;
+    try {
+      // 1) Ensure container exists (auto-create if not)
+      const { data: existing, error: cSelErr } = await sb
+        .from("containers")
+        .select("id, container_code, ref_uid")
+        .eq("container_code", container_code)
+        .limit(1);
+
+      if (cSelErr) throw cSelErr;
+
+      let containerRefUid = existing?.[0]?.ref_uid || null;
+
+      if (!existing || existing.length === 0) {
+        const payload = {
+          container_code,
+          created_by: session.user.id
+        };
+
+        const { data: cIns, error: cInsErr } = await sb
+          .from("containers")
+          .insert(payload)
+          .select("ref_uid, container_code")
+          .single();
+
+        if (cInsErr) throw cInsErr;
+        containerRefUid = cIns.ref_uid;
+
+        // Redirect to container_detail for enrichment (page may be added later)
+        // If container_detail.html does not exist yet, comment these 4 lines out.
+        const returnTo = "./capture.html";
+        location.href =
+          `./container_detail.html?ref_uid=${encodeURIComponent(containerRefUid)}` +
+          `&return=capture&return_url=${encodeURIComponent(returnTo)}`;
+        return;
+      }
+
+      // 2) Upload photo
+      const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
+      const path = `items/${session.user.id}/${Date.now()}_${Math.random().toString(16).slice(2)}.${ext}`;
+
+      const { error: upErr } = await sb.storage
+        .from("item-photos")
+        .upload(path, file, { upsert: false, cacheControl: "3600" });
+
+      if (upErr) throw upErr;
+
+      // 3) Insert item row
+      const itemPayload = {
+        container_code,
+        description: desc,
+        photo_path: path,
+        created_by: session.user.id,
+        container_ref_uid: containerRefUid
+      };
+
+      const { error: iErr } = await sb.from("items").insert(itemPayload);
+      if (iErr) throw iErr;
+
+      show(saveMsg, "DONE");
+      // reset photo/desc for next item in same container
+      photoEl.value = "";
+      descEl.value = "";
+      descEl.focus();
+    } catch (e) {
+      show(errMsg, (e && e.message) ? e.message : String(e));
+    } finally {
+      btnSave.disabled = false;
+    }
+  });
+})();
+</script>
 </body>
 </html>
