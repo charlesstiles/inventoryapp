@@ -1,17 +1,14 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Inventory Search</title>
-
-  <link rel="stylesheet" href="./styles.css">
-
+  <link rel="stylesheet" href="./styles.css?v=1" />
+  <script src="./config.js?v=1"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="./config.js"></script>
-  <script src="./navigation.js"></script>
+  <script src="./navigation.js?v=1"></script>
 </head>
-
 <body>
   <header>
     <h1>Inventory Search</h1>
@@ -19,14 +16,12 @@
   </header>
 
   <div class="card">
-    <label for="searchInput">Search items</label>
-    <input id="searchInput" placeholder="Search by description or container code" />
+    <label for="q">Search items</label>
+    <input id="q" type="text" placeholder="e.g. hammer" />
+    <button id="btnSearch" class="btn">Search</button>
+    <div id="msg" class="error hidden"></div>
 
-    <button id="searchBtn" type="button" class="btn">Search</button>
-
-    <div id="searchMsg"></div>
-
-    <table id="resultsTable" class="table hidden">
+    <table class="table" id="tbl">
       <thead>
         <tr>
           <th>Description</th>
@@ -38,71 +33,91 @@
     </table>
   </div>
 
-  <script>
-    document.addEventListener("DOMContentLoaded", () => {
-      if (window.APP_NAV) window.APP_NAV.render("navBar");
+<script>
+(() => {
+  const cfg = window.APP_CONFIG || {};
+  const sb = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
+  window.APP_SUPABASE = sb;
 
-      if (!window.APP_CONFIG || !window.APP_CONFIG.SUPABASE_URL || !window.APP_CONFIG.SUPABASE_ANON_KEY) {
-        alert("Missing config.js settings.");
-        return;
+  const qEl = document.getElementById("q");
+  const btn = document.getElementById("btnSearch");
+  const msg = document.getElementById("msg");
+  const tbody = document.querySelector("#tbl tbody");
+
+  function show(el, text) { el.textContent = text || ""; el.classList.remove("hidden"); }
+  function hide(el) { el.classList.add("hidden"); el.textContent = ""; }
+
+  async function requireAuthOrRedirect() {
+    const { data } = await sb.auth.getSession();
+    if (!data?.session) {
+      location.href = "./capture.html?v=" + Date.now();
+      return false;
+    }
+    return true;
+  }
+
+  async function boot() {
+    const ok = await requireAuthOrRedirect();
+    if (!ok) return;
+    if (window.APP_NAV?.render) await window.APP_NAV.render("navBar");
+  }
+
+  boot();
+
+  async function doSearch() {
+    hide(msg);
+    tbody.innerHTML = "";
+
+    const ok = await requireAuthOrRedirect();
+    if (!ok) return;
+
+    const q = (qEl.value || "").trim();
+    if (!q) return show(msg, "Enter a search term.");
+
+    btn.disabled = true;
+    try {
+      // wildcard before/after
+      const like = `%${q}%`;
+      const { data, error } = await sb
+        .from("items")
+        .select("description, container_code, created_at")
+        .ilike("description", like)
+        .order("created_at", { ascending: false })
+        .limit(200);
+
+      if (error) throw error;
+
+      for (const r of (data || [])) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${escapeHtml(r.description || "")}</td>
+          <td>${escapeHtml(r.container_code || "")}</td>
+          <td>${formatDt(r.created_at)}</td>
+        `;
+        tbody.appendChild(tr);
       }
-      const { SUPABASE_URL, SUPABASE_ANON_KEY } = window.APP_CONFIG;
-      const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    } catch (e) {
+      show(msg, (e && e.message) ? e.message : String(e));
+    } finally {
+      btn.disabled = false;
+    }
+  }
 
-      const searchInput = document.getElementById("searchInput");
-      const searchBtn = document.getElementById("searchBtn");
-      const searchMsg = document.getElementById("searchMsg");
-      const resultsTable = document.getElementById("resultsTable");
-      const tbody = resultsTable.querySelector("tbody");
+  function formatDt(v) {
+    if (!v) return "";
+    const d = new Date(v);
+    return isNaN(d.getTime()) ? String(v) : d.toLocaleString();
+  }
 
-      function show(type, text) {
-        searchMsg.innerHTML = `<div class="${type}">${String(text)}</div>`;
-      }
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, m => ({
+      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+    }[m]));
+  }
 
-      function clearResults() {
-        tbody.innerHTML = "";
-        resultsTable.classList.add("hidden");
-      }
-
-      async function runSearch() {
-        searchBtn.disabled = true;
-        searchMsg.innerHTML = "";
-        clearResults();
-
-        const term = searchInput.value.trim();
-        if (!term) { show("error", "Enter a search term."); searchBtn.disabled = false; return; }
-
-        try {
-          const { data, error } = await sb
-            .from("items")
-            .select("item_description, container_code, created_at")
-            .or(`item_description.ilike.%${term}%,container_code.ilike.%${term}%`)
-            .order("created_at", { ascending: false })
-            .limit(200);
-
-          if (error) { show("error", error.message); return; }
-          if (!data || data.length === 0) { show("info", "No results found."); return; }
-
-          for (const row of data) {
-            const tr = document.createElement("tr");
-            tr.innerHTML = `
-              <td>${row.item_description || ""}</td>
-              <td>${row.container_code || ""}</td>
-              <td class="muted">${new Date(row.created_at).toLocaleString()}</td>
-            `;
-            tbody.appendChild(tr);
-          }
-          resultsTable.classList.remove("hidden");
-        } catch (e) {
-          show("error", e?.message || String(e));
-        } finally {
-          searchBtn.disabled = false;
-        }
-      }
-
-      searchBtn.addEventListener("click", runSearch);
-      searchInput.addEventListener("keydown", (e) => { if (e.key === "Enter") runSearch(); });
-    });
-  </script>
+  btn.addEventListener("click", doSearch);
+  qEl.addEventListener("keydown", (e) => { if (e.key === "Enter") doSearch(); });
+})();
+</script>
 </body>
 </html>
