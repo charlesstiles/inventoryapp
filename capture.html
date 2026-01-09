@@ -1,311 +1,349 @@
 <!doctype html>
-<html lang="en">
+<html>
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Inventory Capture</title>
-  <link rel="stylesheet" href="./styles.css?v=1" />
-  <script src="./config.js?v=1"></script>
+  <link rel="stylesheet" href="styles.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="./navigation.js?v=1"></script>
-  <!-- QuaggaJS for Code39 scan -->
+  <script src="config.js"></script>
+  <script src="navigation.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/quagga@0.12.1/dist/quagga.min.js"></script>
 </head>
 <body>
-  <header>
-    <h1>Inventory Capture</h1>
+  <div class="page">
     <div id="navBar"></div>
-  </header>
 
-  <!-- AUTH CARD -->
-  <div id="authCard" class="card">
-    <label for="email">Email</label>
-    <input id="email" type="email" autocomplete="username" />
+    <div id="banner" class="banner" style="display:none;"></div>
 
-    <label for="password">Password</label>
-    <input id="password" type="password" autocomplete="current-password" />
+    <div class="card">
+      <h1>Inventory Capture</h1>
 
-    <button id="btnSignIn" class="btn">Sign In</button>
-    <div id="authMsg" class="error hidden"></div>
-    <div class="small muted">Tip: add <span class="mono">?v=123</span> to bust cache.</div>
-  </div>
+      <!-- LOGIN -->
+      <div id="loginBox" style="display:none;">
+        <label>Email</label>
+        <input id="email" type="email" placeholder="you@example.com" />
+        <label>Password</label>
+        <input id="password" type="password" placeholder="••••••••" />
+        <div class="hr"></div>
+        <button class="btn" id="btnLogin">Sign In</button>
+        <div class="small-note">Sign-in is required before capture/search/container access.</div>
+      </div>
 
-  <!-- CAPTURE CARD -->
-  <div id="captureCard" class="card hidden">
-    <label for="containerCode">Container Code</label>
-    <input id="containerCode" type="text" placeholder="e.g. TOTE0076" />
+      <!-- CAPTURE -->
+      <div id="captureBox" style="display:none;">
+        <label>Container Code</label>
+        <div class="row">
+          <input id="containerCode" type="text" placeholder="e.g. TOTE0076" />
+          <button class="btn secondary" id="btnScanContainer" style="max-width:180px;">Scan</button>
+        </div>
+        <div class="small-note" id="containerSetNote"></div>
 
-    <div class="row3">
-      <button id="btnScanContainer" class="btn-secondary">Scan Container</button>
-      <button id="btnChangeContainer" class="btn-secondary">Change Container</button>
-      <button id="btnClearContainer" class="btn-secondary">Clear</button>
+        <label>Photo (required)</label>
+        <input id="photo" type="file" accept="image/*" capture="environment" />
+
+        <label>Description</label>
+        <textarea id="desc" placeholder="Item description"></textarea>
+
+        <div class="row">
+          <div>
+            <label>Quantity</label>
+            <input id="qty" type="number" step="0.1" value="1" />
+          </div>
+          <div></div>
+        </div>
+
+        <div class="hr"></div>
+        <button class="btn" id="btnSave">Save Item</button>
+        <div class="small-note">After save, the form stays ready for the next item in the same container.</div>
+      </div>
     </div>
-
-    <label for="photo">Photo (required)</label>
-    <input id="photo" type="file" accept="image/*" capture="environment" />
-
-    <label for="description">Description</label>
-    <textarea id="description" rows="3" placeholder="Item description"></textarea>
-
-    <button id="btnSave" class="btn">Save Item</button>
-
-    <div id="saveMsg" class="success hidden"></div>
-    <div id="errMsg" class="error hidden"></div>
-
-    <div class="small muted" id="lastScan">Last scan: —</div>
   </div>
 
-  <!-- SCANNER OVERLAY -->
-  <div id="scanOverlay" class="overlay">
-    <div class="overlay-inner">
-      <div class="overlay-header">
-        <div>
-          Scan Code 39 Container Label
-          <div class="meta">Hold barcode inside the frame. It will auto-fill the container code.</div>
-        </div>
-        <button id="btnScanClose" class="btn-secondary">Close</button>
+  <!-- Scan Modal -->
+  <div class="modalBackdrop" id="scanModal">
+    <div class="modal">
+      <div class="modalHeader">
+        <h3>Scan Code 39 Container Label</h3>
+        <button class="btn secondary" id="btnCloseScan" style="width:auto;">Close</button>
       </div>
-
-      <div id="scannerArea">
-        <div class="scan-guide">
-          <div class="scan-frame"></div>
+      <div class="modalBody">
+        <div class="videoBox">
+          <div class="scanHint"></div>
+          <div id="scanner"></div>
         </div>
-      </div>
-
-      <div class="overlay-footer">
-        If it feels “zoomed”, keep the barcode centered in the frame and move the phone back slightly.
+        <div class="small-note">Tip: hold steady ~8–14 inches away. Align the barcode within the box.</div>
       </div>
     </div>
   </div>
 
 <script>
-(() => {
-  // ---- Setup Supabase ----
-  const cfg = window.APP_CONFIG || {};
-  const sb = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
-  window.APP_SUPABASE = sb;
-
-  // ---- DOM ----
-  const authCard = document.getElementById("authCard");
-  const captureCard = document.getElementById("captureCard");
-  const emailEl = document.getElementById("email");
-  const passEl = document.getElementById("password");
-  const btnSignIn = document.getElementById("btnSignIn");
-  const authMsg = document.getElementById("authMsg");
-
-  const containerCodeEl = document.getElementById("containerCode");
-  const btnScanContainer = document.getElementById("btnScanContainer");
-  const btnChangeContainer = document.getElementById("btnChangeContainer");
-  const btnClearContainer = document.getElementById("btnClearContainer");
-
-  const photoEl = document.getElementById("photo");
-  const descEl = document.getElementById("description");
+(function(){
+  const banner = document.getElementById("banner");
+  const loginBox = document.getElementById("loginBox");
+  const captureBox = document.getElementById("captureBox");
+  const btnLogin = document.getElementById("btnLogin");
   const btnSave = document.getElementById("btnSave");
-  const saveMsg = document.getElementById("saveMsg");
-  const errMsg = document.getElementById("errMsg");
-  const lastScan = document.getElementById("lastScan");
+  const btnScanContainer = document.getElementById("btnScanContainer");
+  const btnCloseScan = document.getElementById("btnCloseScan");
+  const scanModal = document.getElementById("scanModal");
+  const containerCodeEl = document.getElementById("containerCode");
+  const containerSetNote = document.getElementById("containerSetNote");
 
-  const overlay = document.getElementById("scanOverlay");
-  const btnScanClose = document.getElementById("btnScanClose");
-
-  // ---- Helpers ----
-  function show(el, text) { el.textContent = text || ""; el.classList.remove("hidden"); }
-  function hide(el) { el.classList.add("hidden"); el.textContent = ""; }
-  function normCode39(s) {
-    // Code39 Full ASCII can introduce punctuation; we keep it literal but normalize whitespace.
-    // Also normalize common lowercase input by leaving as-is (your labels might use it).
-    return (s || "").trim().replace(/\s+/g, " ");
+  function showBanner(type, msg){
+    banner.className = "banner " + (type || "ok");
+    banner.textContent = msg;
+    banner.style.display = "block";
+    setTimeout(() => banner.style.display = "none", 4500);
   }
 
-  async function requireSession() {
-    const { data } = await sb.auth.getSession();
-    return data?.session || null;
-  }
-
-  async function setAuthedUI(isAuthed) {
-    if (isAuthed) {
-      authCard.classList.add("hidden");
-      captureCard.classList.remove("hidden");
-    } else {
-      captureCard.classList.add("hidden");
-      authCard.classList.remove("hidden");
+  function code39FullAsciiNormalize(raw){
+    if (!raw) return raw;
+    // Quagga sometimes returns Code39 Full ASCII sequences using '+' prefix.
+    // Implement minimal: +A..+Z => lowercase a..z. Leave other chars as-is.
+    let out = "";
+    for (let i=0; i<raw.length; i++){
+      const ch = raw[i];
+      if (ch === "+" && i+1 < raw.length){
+        const next = raw[i+1];
+        if (next >= "A" && next <= "Z"){
+          out += next.toLowerCase();
+          i++;
+          continue;
+        }
+      }
+      out += ch;
     }
-    // Render nav after APP_SUPABASE exists
-    if (window.APP_NAV?.render) await window.APP_NAV.render("navBar");
+    return out;
   }
 
-  // ---- Boot ----
-  (async () => {
-    const session = await requireSession();
-    await setAuthedUI(!!session);
-  })();
+  async function requireAuth(){
+    await window.APP_NAV.render("navBar");
+    const sb = getSupabase();
+    const { data } = await sb.auth.getUser();
+    return data.user || null;
+  }
 
-  // ---- Sign in ----
-  btnSignIn.addEventListener("click", async () => {
-    hide(authMsg);
-    const email = (emailEl.value || "").trim();
-    const password = passEl.value || "";
-    if (!email || !password) return show(authMsg, "Enter email and password.");
+  async function init(){
+    const user = await requireAuth();
+    if (!user){
+      loginBox.style.display = "block";
+      captureBox.style.display = "none";
+      return;
+    }
+    loginBox.style.display = "none";
+    captureBox.style.display = "block";
+  }
 
-    btnSignIn.disabled = true;
-    try {
+  btnLogin.addEventListener("click", async () => {
+    try{
+      const sb = getSupabase();
+      const email = document.getElementById("email").value.trim();
+      const password = document.getElementById("password").value;
       const { error } = await sb.auth.signInWithPassword({ email, password });
-      if (error) return show(authMsg, error.message || "Login failed.");
-      await setAuthedUI(true);
-    } finally {
-      btnSignIn.disabled = false;
+      if (error) throw error;
+      showBanner("ok", "Login successful ✅");
+      await init();
+    }catch(e){
+      showBanner("err", "Login failed: " + (e.message || e));
     }
   });
 
-  // ---- Container buttons ----
-  btnClearContainer.addEventListener("click", () => {
-    containerCodeEl.value = "";
-    containerCodeEl.focus();
-  });
+  async function ensureActiveContainer(container_code){
+    const sb = getSupabase();
 
-  btnChangeContainer.addEventListener("click", () => {
-    containerCodeEl.focus();
-    containerCodeEl.select();
-  });
+    // Active-only lookup
+    let { data: existing, error } = await sb
+      .from("containers")
+      .select("container_id, ref_uid, container_code, is_active")
+      .eq("container_code", container_code)
+      .eq("is_active", true)
+      .maybeSingle();
 
-  // ---- Scanner ----
-  function stopScanner() {
-    try { Quagga.stop(); } catch (_) {}
+    if (error) throw error;
+
+    if (existing) return existing;
+
+    // Create
+    let { data: created, error: insErr } = await sb
+      .from("containers")
+      .insert([{ container_code }])
+      .select("container_id, ref_uid, container_code, is_active")
+      .single();
+
+    if (insErr) throw insErr;
+
+    // If trigger not present and ref_uid not set, backfill
+    if (!created.ref_uid){
+      const { data: upd, error: updErr } = await sb
+        .from("containers")
+        .update({ ref_uid: created.container_id })
+        .eq("container_id", created.container_id)
+        .select("container_id, ref_uid, container_code, is_active")
+        .single();
+      if (updErr) throw updErr;
+      created = upd;
+    }
+
+    // Redirect immediately to container_detail for enrichment, then return to capture
+    const returnUrl = encodeURIComponent("capture.html");
+    window.location.href = `container_detail.html?ref_uid=${encodeURIComponent(created.ref_uid)}&return=${returnUrl}`;
+    // NOTE: user will come back from container_detail; capture page will still be ready.
+    return created;
   }
 
-  function openScanner() {
-    hide(errMsg);
-    overlay.style.display = "block";
+  async function compressImageToJpeg(file, maxDim=1024, quality=0.72){
+    // Resize to keep storage low. 1024 max dimension is plenty for 1.5"x1.5" labels and on-screen viewing.
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    await new Promise((res, rej) => { img.onload=res; img.onerror=rej; img.src=url; });
 
-    // Clear previous
-    stopScanner();
-    lastScan.textContent = "Last scan: —";
+    const w = img.width, h = img.height;
+    const scale = Math.min(1, maxDim / Math.max(w,h));
+    const nw = Math.round(w*scale);
+    const nh = Math.round(h*scale);
 
+    const canvas = document.createElement("canvas");
+    canvas.width = nw;
+    canvas.height = nh;
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(img, 0, 0, nw, nh);
+
+    const blob = await new Promise((res) => canvas.toBlob(res, "image/jpeg", quality));
+    URL.revokeObjectURL(url);
+    return blob;
+  }
+
+  btnSave.addEventListener("click", async () => {
+    try{
+      const user = await requireAuth();
+      if (!user) { showBanner("err","Please sign in."); return; }
+
+      const container_code = containerCodeEl.value.trim();
+      if (!container_code) { showBanner("err","Container Code is required."); return; }
+
+      const photoFile = document.getElementById("photo").files?.[0];
+      if (!photoFile) { showBanner("err","Photo is required."); return; }
+
+      const item_description = document.getElementById("desc").value.trim();
+      const quantity = Number(document.getElementById("qty").value || 1);
+
+      // Ensure container exists (will redirect if newly created)
+      const container = await ensureActiveContainer(container_code);
+
+      // Insert item row (active version)
+      const sb = getSupabase();
+      let { data: item, error: insErr } = await sb
+        .from("items")
+        .insert([{
+          container_code,
+          item_description,
+          quantity
+        }])
+        .select("item_id, ref_uid, container_code, item_description, quantity, is_active")
+        .single();
+
+      if (insErr) throw insErr;
+
+      // Backfill ref_uid if needed
+      if (!item.ref_uid){
+        const { data: updItem, error: updErr } = await sb
+          .from("items")
+          .update({ ref_uid: item.item_id })
+          .eq("item_id", item.item_id)
+          .select("item_id, ref_uid, container_code, item_description, quantity, is_active")
+          .single();
+        if (updErr) throw updErr;
+        item = updItem;
+      }
+
+      // Upload photo to item-photos bucket
+      const jpegBlob = await compressImageToJpeg(photoFile, 1024, 0.72);
+      const path = `items/${item.ref_uid}/${item.item_id}.jpg`;
+
+      const { error: upErr } = await sb.storage
+        .from("item-photos")
+        .upload(path, jpegBlob, { contentType: "image/jpeg", upsert: true });
+
+      if (upErr) throw upErr;
+
+      // Save path on item row
+      const { error: savePathErr } = await sb
+        .from("items")
+        .update({ photo_path: path })
+        .eq("item_id", item.item_id);
+
+      if (savePathErr) throw savePathErr;
+
+      showBanner("ok", "Saved ✅");
+      document.getElementById("photo").value = "";
+      document.getElementById("desc").value = "";
+      document.getElementById("qty").value = "1";
+      // keep same container
+    }catch(e){
+      showBanner("err", "Save failed: " + (e.message || e));
+    }
+  });
+
+  // ------- Scanner (Quagga) -------
+  function openScan(){
+    scanModal.style.display = "flex";
+    const target = document.getElementById("scanner");
+    target.innerHTML = ""; // reset
+
+    // Key fix for the "zoomed in after 1–2 seconds" issue:
+    // Use constraints that match the viewport and prefer back camera, avoid huge ideal widths.
     Quagga.init({
       inputStream: {
         type: "LiveStream",
-        target: document.querySelector("#scannerArea"),
-        constraints: { facingMode: "environment" },
-        area: { top: "15%", right: "10%", left: "10%", bottom: "15%" }
+        target: target,
+        constraints: {
+          facingMode: "environment",
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        },
+        area: { // scan central area (reduces false reads & helps "zoom feel")
+          top: "20%",
+          right: "10%",
+          left: "10%",
+          bottom: "20%"
+        }
       },
-      decoder: {
-        readers: ["code_39_reader"],
-        multiple: false
-      },
-      locate: true,
-      numOfWorkers: 1
+      decoder: { readers: ["code_39_reader"] },
+      locate: true
     }, (err) => {
       if (err) {
-        show(errMsg, "Scanner init failed: " + err.message);
+        showBanner("err", "Scanner init failed: " + (err.message || err));
+        closeScan();
         return;
       }
       Quagga.start();
     });
 
-    Quagga.offDetected();
-    Quagga.onDetected((result) => {
-      const code = normCode39(result?.codeResult?.code);
-      if (!code) return;
-      containerCodeEl.value = code;
-      lastScan.textContent = "Last scan: " + code;
-      overlay.style.display = "none";
-      stopScanner();
+    Quagga.offDetected(); // ensure no stacking handlers
+    Quagga.onDetected((res) => {
+      const raw = res?.codeResult?.code;
+      if (!raw) return;
+      const normalized = code39FullAsciiNormalize(raw);
+
+      containerCodeEl.value = normalized;
+      containerSetNote.textContent = `Container set: ${normalized}`;
+      showBanner("ok", `Scanned: ${normalized}`);
+
+      closeScan();
     });
   }
 
-  btnScanContainer.addEventListener("click", openScanner);
+  function closeScan(){
+    scanModal.style.display = "none";
+    try { Quagga.stop(); } catch(e) {}
+  }
 
-  btnScanClose.addEventListener("click", () => {
-    overlay.style.display = "none";
-    stopScanner();
-  });
+  btnScanContainer.addEventListener("click", openScan);
+  btnCloseScan.addEventListener("click", closeScan);
 
-  // ---- Save Item ----
-  btnSave.addEventListener("click", async () => {
-    hide(saveMsg); hide(errMsg);
-
-    const session = await requireSession();
-    if (!session) return show(errMsg, "Please sign in.");
-
-    const container_code = normCode39(containerCodeEl.value);
-    const desc = (descEl.value || "").trim();
-    const file = photoEl.files?.[0] || null;
-
-    if (!container_code) return show(errMsg, "Container Code is required.");
-    if (!file) return show(errMsg, "Photo is required.");
-
-    btnSave.disabled = true;
-    try {
-      // 1) Ensure container exists (auto-create if not)
-      const { data: existing, error: cSelErr } = await sb
-        .from("containers")
-        .select("container_id, container_code, ref_uid")
-        .eq("container_code", container_code)
-        .limit(1);
-
-      if (cSelErr) throw cSelErr;
-
-      let containerRefUid = existing?.[0]?.ref_uid || null;
-
-      if (!existing || existing.length === 0) {
-        const payload = {
-          container_code,
-          created_by: session.user.id
-        };
-
-        const { data: cIns, error: cInsErr } = await sb
-          .from("containers")
-          .insert(payload)
-          .select("ref_uid, container_code")
-          .single();
-
-        if (cInsErr) throw cInsErr;
-        containerRefUid = cIns.ref_uid;
-
-        // Redirect to container_detail for enrichment (page may be added later)
-        // If container_detail.html does not exist yet, comment these 4 lines out.
-        const returnTo = "./capture.html";
-        location.href =
-          `./container_detail.html?ref_uid=${encodeURIComponent(containerRefUid)}` +
-          `&return=capture&return_url=${encodeURIComponent(returnTo)}`;
-        return;
-      }
-
-      // 2) Upload photo
-      const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
-      const path = `items/${session.user.id}/${Date.now()}_${Math.random().toString(16).slice(2)}.${ext}`;
-
-      const { error: upErr } = await sb.storage
-        .from("item-photos")
-        .upload(path, file, { upsert: false, cacheControl: "3600" });
-
-      if (upErr) throw upErr;
-
-      // 3) Insert item row
-      const itemPayload = {
-        container_code,
-        description: desc,
-        photo_path: path,
-        created_by: session.user.id,
-        container_ref_uid: containerRefUid
-      };
-
-      const { error: iErr } = await sb.from("items").insert(itemPayload);
-      if (iErr) throw iErr;
-
-      show(saveMsg, "DONE");
-      // reset photo/desc for next item in same container
-      photoEl.value = "";
-      descEl.value = "";
-      descEl.focus();
-    } catch (e) {
-      show(errMsg, (e && e.message) ? e.message : String(e));
-    } finally {
-      btnSave.disabled = false;
-    }
-  });
+  init();
 })();
 </script>
 </body>
 </html>
-
