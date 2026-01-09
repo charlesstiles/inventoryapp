@@ -1,0 +1,377 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Item Detail</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script src="navigation.js"></script>
+</head>
+<body>
+  <div class="page">
+    <div id="navBar"></div>
+    <div id="banner" class="banner" style="display:none;"></div>
+
+    <div class="card">
+      <h1>Item Detail</h1>
+
+      <div id="meta" class="small-note"></div>
+
+      <div class="row" style="align-items:flex-start;">
+        <div style="flex:1;">
+          <label>Photo</label>
+          <div id="photoWrap"></div>
+          <input id="photoFile" type="file" accept="image/*" capture="environment" style="display:none;" />
+          <div class="small-note">Click photo to replace (when editing).</div>
+        </div>
+        <div style="flex:2;">
+          <label>Description</label>
+          <textarea id="desc" disabled></textarea>
+
+          <label>Quantity</label>
+          <input id="qty" type="number" step="0.1" disabled />
+
+          <label>Container Code</label>
+          <input id="containerCode" type="text" disabled />
+        </div>
+      </div>
+
+      <div class="hr"></div>
+
+      <div class="row">
+        <button class="btn secondary" id="btnEdit" style="max-width:180px;">Edit</button>
+        <button class="btn disabled" id="btnSave" disabled>Save</button>
+      </div>
+
+      <div class="hr"></div>
+
+      <h2>Container Contents</h2>
+      <table class="table" id="tbl" style="display:none;">
+        <thead>
+          <tr>
+            <th></th>
+            <th>Description</th>
+            <th>Qty</th>
+            <th>User</th>
+            <th>Created</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+      <div class="small-note" id="note"></div>
+    </div>
+  </div>
+
+<script>
+(async function(){
+  const banner = document.getElementById("banner");
+  const meta = document.getElementById("meta");
+  const descEl = document.getElementById("desc");
+  const qtyEl = document.getElementById("qty");
+  const containerCodeEl = document.getElementById("containerCode");
+  const btnEdit = document.getElementById("btnEdit");
+  const btnSave = document.getElementById("btnSave");
+  const photoWrap = document.getElementById("photoWrap");
+  const photoFile = document.getElementById("photoFile");
+  const tbl = document.getElementById("tbl");
+  const tbody = document.getElementById("tbody");
+  const note = document.getElementById("note");
+
+  function showBanner(type, msg){
+    banner.className = "banner " + (type || "ok");
+    banner.textContent = msg;
+    banner.style.display = "block";
+    setTimeout(() => banner.style.display = "none", 4500);
+  }
+
+  function esc(s){ return (s||"").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+
+  async function requireAuth(){
+    await window.APP_NAV.render("navBar");
+    const sb = getSupabase();
+    const { data } = await sb.auth.getUser();
+    if (!data.user){
+      window.location.href = "capture.html";
+      return null;
+    }
+    return data.user;
+  }
+
+  function getParam(name){
+    const u = new URL(window.location.href);
+    return u.searchParams.get(name);
+  }
+
+  async function compressImageToJpeg(file, maxDim=1024, quality=0.72){
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    await new Promise((res, rej) => { img.onload=res; img.onerror=rej; img.src=url; });
+
+    const w = img.width, h = img.height;
+    const scale = Math.min(1, maxDim / Math.max(w,h));
+    const nw = Math.round(w*scale);
+    const nh = Math.round(h*scale);
+
+    const canvas = document.createElement("canvas");
+    canvas.width = nw; canvas.height = nh;
+    canvas.getContext("2d").drawImage(img, 0, 0, nw, nh);
+
+    const blob = await new Promise((res) => canvas.toBlob(res, "image/jpeg", quality));
+    URL.revokeObjectURL(url);
+    return blob;
+  }
+
+  async function signedUrl(bucket, path){
+    if (!path) return null;
+    const sb = getSupabase();
+    const { data, error } = await sb.storage.from(bucket).createSignedUrl(path, 60*30);
+    if (error) return null;
+    return data?.signedUrl || null;
+  }
+
+  let user = await requireAuth();
+  if (!user) return;
+
+  const ref_uid = getParam("ref_uid");
+  if (!ref_uid){
+    showBanner("err","Missing ref_uid");
+    return;
+  }
+
+  const sb = getSupabase();
+
+  // Load active item row for this ref_uid
+  const { data: item, error } = await sb
+    .from("items")
+    .select("item_id, ref_uid, container_code, item_description, quantity, photo_path, created_at, created_by, updated_at, updated_by")
+    .eq("ref_uid", ref_uid)
+    .eq("is_active", true)
+    .single();
+
+  if (error){
+    showBanner("err","Load failed: " + (error.message || error));
+    return;
+  }
+
+  let original = {
+    item_id: item.item_id,
+    ref_uid: item.ref_uid,
+    container_code: item.container_code || "",
+    item_description: item.item_description || "",
+    quantity: item.quantity ?? 1,
+    photo_path: item.photo_path || "",
+    created_at: item.created_at,
+    created_by: item.created_by,
+    updated_at: item.updated_at,
+    updated_by: item.updated_by
+  };
+
+  // Render metadata
+  meta.innerHTML = `
+    <div class="mono">ref_uid: ${esc(original.ref_uid)}</div>
+    <div class="mono">uid: ${esc(original.item_id)}</div>
+    <div class="mono">created: ${esc(new Date(original.created_at).toLocaleString())} by ${esc(original.created_by||"")}</div>
+    ${original.updated_at ? `<div class="mono">updated: ${esc(new Date(original.updated_at).toLocaleString())} by ${esc(original.updated_by||"")}</div>` : ""}
+  `;
+
+  // Render fields
+  descEl.value = original.item_description;
+  qtyEl.value = String(original.quantity);
+  containerCodeEl.value = original.container_code;
+
+  // Render photo
+  async function renderPhoto(){
+    const url = await signedUrl("item-photos", original.photo_path);
+    photoWrap.innerHTML = url ? `<img class="thumb" style="width:140px;height:140px;border-radius:16px" src="${url}" />` : `<div class="small-note">No photo</div>`;
+    const img = photoWrap.querySelector("img");
+    if (img){
+      img.style.cursor = editing ? "pointer" : "default";
+      img.addEventListener("click", () => { if (editing) photoFile.click(); });
+    }
+  }
+
+  let editing = false;
+  let pendingPhotoBlob = null; // if user replaced photo
+  let pendingPhotoPath = original.photo_path;
+
+  function setEditing(on){
+    editing = on;
+    descEl.disabled = !on;
+    qtyEl.disabled = !on;
+    containerCodeEl.disabled = !on;
+    btnSave.disabled = true;
+    btnSave.classList.add("disabled");
+    btnEdit.textContent = on ? "Cancel" : "Edit";
+    pendingPhotoBlob = null;
+    pendingPhotoPath = original.photo_path;
+    renderPhoto();
+  }
+
+  function detectChanges(){
+    if (!editing) return false;
+    const changed =
+      descEl.value.trim() !== original.item_description ||
+      Number(qtyEl.value||1) !== Number(original.quantity) ||
+      containerCodeEl.value.trim() !== original.container_code ||
+      pendingPhotoBlob !== null;
+    return changed;
+  }
+
+  function updateSaveState(){
+    const ok = detectChanges();
+    btnSave.disabled = !ok;
+    btnSave.classList.toggle("disabled", !ok);
+  }
+
+  ["input","change"].forEach(ev=>{
+    descEl.addEventListener(ev, updateSaveState);
+    qtyEl.addEventListener(ev, updateSaveState);
+    containerCodeEl.addEventListener(ev, updateSaveState);
+  });
+
+  photoFile.addEventListener("change", async () => {
+    const f = photoFile.files?.[0];
+    if (!f) return;
+    pendingPhotoBlob = await compressImageToJpeg(f, 1024, 0.72);
+    // show preview
+    const url = URL.createObjectURL(pendingPhotoBlob);
+    photoWrap.innerHTML = `<img class="thumb" style="width:140px;height:140px;border-radius:16px;cursor:pointer" src="${url}" />`;
+    updateSaveState();
+  });
+
+  btnEdit.addEventListener("click", () => {
+    if (!editing) setEditing(true);
+    else {
+      // cancel
+      descEl.value = original.item_description;
+      qtyEl.value = String(original.quantity);
+      containerCodeEl.value = original.container_code;
+      setEditing(false);
+    }
+  });
+
+  btnSave.addEventListener("click", async () => {
+    try{
+      if (!detectChanges()) return;
+
+      const newDesc = descEl.value.trim();
+      const newQty = Number(qtyEl.value || 1);
+      const newContainerCode = containerCodeEl.value.trim();
+
+      if (!newContainerCode){
+        showBanner("err","Container Code required.");
+        return;
+      }
+
+      // 1) mark old row inactive
+      const { error: offErr } = await sb
+        .from("items")
+        .update({ is_active: false })
+        .eq("item_id", original.item_id);
+
+      if (offErr) throw offErr;
+
+      // 2) insert new version row (same ref_uid)
+      let { data: newRow, error: insErr } = await sb
+        .from("items")
+        .insert([{
+          ref_uid: original.ref_uid,
+          is_active: true,
+          container_code: newContainerCode,
+          item_description: newDesc,
+          quantity: newQty,
+          updated_at: new Date().toISOString(),
+          updated_by: user.id
+        }])
+        .select("item_id, ref_uid, photo_path, created_at, created_by")
+        .single();
+
+      if (insErr) throw insErr;
+
+      // 3) photo upload if changed
+      let finalPhotoPath = original.photo_path;
+      if (pendingPhotoBlob){
+        finalPhotoPath = `items/${original.ref_uid}/${newRow.item_id}.jpg`;
+        const { error: upErr } = await sb.storage.from("item-photos")
+          .upload(finalPhotoPath, pendingPhotoBlob, { contentType:"image/jpeg", upsert:true });
+        if (upErr) throw upErr;
+
+        const { error: pErr } = await sb
+          .from("items")
+          .update({ photo_path: finalPhotoPath })
+          .eq("item_id", newRow.item_id);
+        if (pErr) throw pErr;
+      } else {
+        // carry forward old photo path
+        const { error: pErr } = await sb
+          .from("items")
+          .update({ photo_path: original.photo_path })
+          .eq("item_id", newRow.item_id);
+        if (pErr) throw pErr;
+      }
+
+      showBanner("ok","Saved new version ✅");
+      // reload page to show the new active version
+      window.location.reload();
+    }catch(e){
+      showBanner("err","Save failed: " + (e.message || e));
+    }
+  });
+
+  // container contents table under item detail
+  async function loadContainerContents(container_code){
+    tbody.innerHTML = "";
+    tbl.style.display = "none";
+    note.textContent = "Loading container contents…";
+
+    const { data: items, error } = await sb
+      .from("items")
+      .select("ref_uid, item_description, quantity, created_by, created_at, photo_path")
+      .eq("is_active", true)
+      .eq("container_code", container_code)
+      .order("created_at", { ascending:false })
+      .limit(400);
+
+    if (error){
+      note.textContent = "";
+      showBanner("err","Contents load failed: " + (error.message || error));
+      return;
+    }
+    if (!items?.length){
+      note.textContent = "No items in this container.";
+      return;
+    }
+
+    tbl.style.display = "table";
+    note.textContent = `${items.length} item(s).`;
+
+    for (const it of items){
+      const tr = document.createElement("tr");
+      tr.style.cursor = "pointer";
+      tr.addEventListener("click", () => {
+        window.location.href = `item_detail.html?ref_uid=${encodeURIComponent(it.ref_uid)}`;
+      });
+
+      const url = await signedUrl("item-photos", it.photo_path);
+
+      tr.innerHTML = `
+        <td>${url ? `<img class="thumb" src="${url}" />` : ""}</td>
+        <td>${esc(it.item_description)}</td>
+        <td class="mono">${esc(String(it.quantity ?? 1))}</td>
+        <td class="mono">${esc(it.created_by || "")}</td>
+        <td class="mono">${esc(new Date(it.created_at).toLocaleString())}</td>
+      `;
+      tbody.appendChild(tr);
+    }
+  }
+
+  await renderPhoto();
+  setEditing(false);
+  await loadContainerContents(original.container_code);
+
+})();
+</script>
+</body>
+</html>
