@@ -1,115 +1,74 @@
-/* =========================
-   navigation.js (FULL FILE)
-   =========================
-   - Hides Search + Container links when logged out
-   - Shows Logout only when logged in
-   - Requires pages to set: window.APP_SUPABASE = supabaseClient;
-*/
+// navigation.js
+(function(){
+  function qs(id){ return document.getElementById(id); }
 
-window.APP_NAV = {
-  links: [
-    { label: "Capture", href: "./capture.html" },
-    { label: "Search", href: "./search.html", requiresAuth: true },
-    { label: "Container", href: "./container.html", requiresAuth: true }
-  ],
+  async function getUser(){
+    const sb = window.getSupabase();
+    const { data } = await sb.auth.getUser();
+    return data?.user || null;
+  }
 
-  async render(containerId) {
-    const host = document.getElementById(containerId);
-    if (!host) return;
-
-    const current = (location.pathname.split("/").pop() || "").toLowerCase();
-    const sb = window.APP_SUPABASE || null;
-
-    // Determine session (controls link visibility + Logout)
-    let isAuthed = false;
-    try {
-      if (sb) {
-        const { data } = await sb.auth.getSession();
-        isAuthed = !!data?.session;
-      }
-    } catch (_) {
-      isAuthed = false;
-    }
-
-    host.innerHTML = `
+  function buildNavHTML(user){
+    return `
       <div class="navWrap">
-        <button class="navBurger" type="button" aria-label="Menu" aria-expanded="false">☰</button>
-        <div class="navInline"></div>
-        <div class="navMenu hidden" role="menu"></div>
+        <div class="navTitle">Inventory App</div>
+        <button class="hamburger" id="navBtn" aria-label="Menu">☰</button>
+      </div>
+      <div class="menu" id="navMenu" style="display:none;">
+        ${user ? `
+          <a href="capture.html">Capture</a>
+          <a href="search.html">Search</a>
+          <a href="container.html">Container</a>
+          <a href="location_detail.html">Locations</a>
+          <div class="muted">Signed in as<br>${user.email || "(email hidden)"}</div>
+          <button id="navLogout" class="danger">Logout</button>
+        ` : `
+          <a href="capture.html">Sign In</a>
+          <div class="muted">Sign in to access Search/Container.</div>
+        `}
       </div>
     `;
-
-    const burger = host.querySelector(".navBurger");
-    const inline = host.querySelector(".navInline");
-    const menu = host.querySelector(".navMenu");
-
-    const makeLink = (link) => {
-      const a = document.createElement("a");
-      a.href = link.href;
-      a.textContent = link.label;
-      a.className = "navLink";
-      const target = (link.href.split("/").pop() || "").toLowerCase();
-      if (target === current) a.classList.add("active");
-      return a;
-    };
-
-    const makeAction = ({ label, onClick }) => {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.textContent = label;
-      b.className = "navLink";
-      b.style.cursor = "pointer";
-      b.addEventListener("click", onClick);
-      return b;
-    };
-
-    // Filter links by auth requirement
-    const visibleLinks = this.links.filter(l => !l.requiresAuth || isAuthed);
-
-    // Desktop inline
-    for (const link of visibleLinks) inline.appendChild(makeLink(link));
-
-    // Mobile menu
-    for (const link of visibleLinks) {
-      const a = makeLink(link);
-      a.setAttribute("role", "menuitem");
-      menu.appendChild(a);
-    }
-
-    // Logout only when authenticated
-    if (isAuthed) {
-      const doLogout = async () => {
-        try {
-          if (sb) await sb.auth.signOut();
-        } finally {
-          location.href = "./capture.html?v=" + Date.now();
-        }
-      };
-
-      inline.appendChild(makeAction({ label: "Logout", onClick: doLogout }));
-
-      const mobLogout = makeAction({ label: "Logout", onClick: doLogout });
-      mobLogout.setAttribute("role", "menuitem");
-      menu.appendChild(mobLogout);
-    }
-
-    function closeMenu() {
-      menu.classList.add("hidden");
-      burger.setAttribute("aria-expanded", "false");
-    }
-
-    function toggleMenu() {
-      const isHidden = menu.classList.contains("hidden");
-      if (isHidden) {
-        menu.classList.remove("hidden");
-        burger.setAttribute("aria-expanded", "true");
-      } else {
-        closeMenu();
-      }
-    }
-
-    burger.addEventListener("click", (e) => { e.stopPropagation(); toggleMenu(); });
-    document.addEventListener("click", () => closeMenu());
-    menu.addEventListener("click", () => closeMenu());
   }
-};
+
+  function attachMenuHandlers(){
+    const btn = qs("navBtn");
+    const menu = qs("navMenu");
+    if(!btn || !menu) return;
+
+    btn.addEventListener("click", () => {
+      menu.style.display = (menu.style.display === "none") ? "block" : "none";
+    });
+
+    document.addEventListener("click", (e) => {
+      if (!menu.contains(e.target) && e.target !== btn) {
+        menu.style.display = "none";
+      }
+    });
+  }
+
+  async function attachLogout(){
+    const logoutBtn = qs("navLogout");
+    if(!logoutBtn) return;
+    logoutBtn.addEventListener("click", async () => {
+      const sb = window.getSupabase();
+      await sb.auth.signOut();
+      window.location.href = "capture.html";
+    });
+  }
+
+  window.APP_NAV = {
+    async render(targetId){
+      const el = document.getElementById(targetId);
+      if(!el) return;
+
+      let user = null;
+      try { user = await getUser(); } catch(e){ /* ignore */ }
+
+      el.innerHTML = buildNavHTML(user);
+      attachMenuHandlers();
+      await attachLogout();
+
+      // If logged out, hide nav links by removing them (already handled by buildNavHTML)
+    }
+  };
+})();
