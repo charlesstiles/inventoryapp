@@ -239,7 +239,7 @@
       // 1) Ensure container exists (auto-create if not)
       const { data: existing, error: cSelErr } = await sb
         .from("containers")
-        .select("id, container_code, ref_uid")
+        .select("container_id, container_code, ref_uid")
         .eq("container_code", container_code)
         .limit(1);
 
@@ -308,3 +308,4 @@
 </script>
 </body>
 </html>
+
