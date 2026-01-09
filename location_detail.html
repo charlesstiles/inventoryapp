@@ -1,1 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Location Detail</title>
+
+  <link rel="stylesheet" href="styles.css?v=1" />
+
+  <!-- Supabase JS (v2) -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js?v=1"></script>
+  <script src="navigation.js?v=1"></script>
+</head>
+<body>
+  <div class="page">
+    <div id="navBar"></div>
+
+    <div id="banner" class="banner warn" style="display:none;"></div>
+
+    <div class="card">
+      <h1>Location Detail</h1>
+
+      <div class="row">
+        <div>
+          <label>Location Code</label>
+          <input id="locationCode" type="text" placeholder="e.g. Serenity_Utility_Trailer" disabled />
+          <div class="small-note">Reference (read-only)</div>
+        </div>
+        <div>
+          <label>Location ID</label>
+          <input id="locationId" type="text" placeholder="uuid" disabled />
+          <div class="small-note">Reference (read-only)</div>
+        </div>
+      </div>
+
+      <label>Description</label>
+      <textarea id="locationDescription" placeholder="Location description" disabled></textarea>
+
+      <div class="hr"></div>
+
+      <label>Photo</label>
+      <div class="row">
+        <img id="photoPreview" class="thumb" style="width:96px;height:96px;" alt="Location photo" />
+        <div>
+          <input id="photoFile" type="file" accept="image/*" disabled />
+          <div class="small-note">Photo update controlled by Edit permission (coming next).</div>
+        </div>
+      </div>
+
+      <div class="hr"></div>
+
+      <button id="editBtn" class="btn secondary" disabled>Edit (coming next)</button>
+      <button id="saveBtn" class="btn" disabled>Save (coming next)</button>
+      <div class="small-note">We’ll wire edit/save once we finalize permission checks + history rules.</div>
+    </div>
+  </div>
+
+  <script>
+    const banner = document.getElementById("banner");
+    const locationCodeEl = document.getElementById("locationCode");
+    const locationIdEl = document.getElementById("locationId");
+    const locationDescEl = document.getElementById("locationDescription");
+    const photoPreview = document.getElementById("photoPreview");
+
+    function setBanner(type, msg) {
+      banner.className = "banner " + (type || "warn");
+      banner.textContent = msg;
+      banner.style.display = "block";
+    }
+
+    function getQS(name) {
+      const u = new URL(window.location.href);
+      return u.searchParams.get(name);
+    }
+
+    async function requireLogin() {
+      const sb = window.getSupabase();
+      const { data } = await sb.auth.getUser();
+      if (!data?.user) {
+        window.location.href = "capture.html";
+        return null;
+      }
+      return data.user;
+    }
+
+    async function loadLocation() {
+      const sb = window.getSupabase();
+
+      const location_id = getQS("location_id");
+      const location_code = getQS("location_code");
+
+      if (!location_id && !location_code) {
+        setBanner("warn", "No location selected. Provide ?location_id=... or ?location_code=...");
+        return;
+      }
+
+      let q = sb.from("locations").select("*").limit(1);
+
+      if (location_id) q = q.eq("location_id", location_id);
+      else q = q.eq("location_code", location_code);
+
+      const { data, error } = await q;
+      if (error) {
+        setBanner("err", "Load failed: " + error.message);
+        return;
+      }
+      const row = data && data[0];
+      if (!row) {
+        setBanner("warn", "Location not found.");
+        return;
+      }
+
+      // These names assume: locations(location_id, location_code, location_description, photo_path)
+      locationCodeEl.value = row.location_code || "";
+      locationIdEl.value = row.location_id || "";
+      locationDescEl.value = row.location_description || "";
+
+      // Photo preview (assumes photo_path is a Storage path)
+      if (row.photo_path) {
+        try {
+          const { data: signed, error: sErr } = await sb.storage
+            .from("location-photos")
+            .createSignedUrl(row.photo_path, 60 * 10);
+
+          if (!sErr && signed?.signedUrl) photoPreview.src = signed.signedUrl;
+          else photoPreview.removeAttribute("src");
+        } catch (e) {
+          photoPreview.removeAttribute("src");
+        }
+      } else {
+        photoPreview.removeAttribute("src");
+      }
+    }
+
+    (async function boot(){
+      // Nav
+      if (window.APP_NAV?.render) await window.APP_NAV.render("navBar");
+
+      // Auth
+      const user = await requireLogin();
+      if (!user) return;
+
+      // Data
+      await loadLocation();
+    })();
+  </script>
+</body>
+</html>
 
