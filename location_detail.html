@@ -7,7 +7,6 @@
 
   <link rel="stylesheet" href="styles.css?v=1" />
 
-  <!-- Supabase JS (v2) -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js?v=1"></script>
   <script src="navigation.js?v=1"></script>
@@ -18,7 +17,22 @@
 
     <div id="banner" class="banner warn" style="display:none;"></div>
 
-    <div class="card">
+    <!-- Picker panel (shown when no params) -->
+    <div class="card" id="pickerCard" style="display:none;">
+      <h1>Select a Location</h1>
+      <label>Locations</label>
+      <div class="row">
+        <select id="locationPicker"></select>
+        <button class="btn secondary" id="btnOpen" style="max-width:160px;">Open</button>
+      </div>
+      <div class="row" style="margin-top:10px;">
+        <button class="btn" id="btnAdd" style="max-width:220px;">Add Location</button>
+      </div>
+      <div class="small-note">Tip: you can also open directly with ?location_code=... or ?location_id=...</div>
+    </div>
+
+    <!-- Detail panel -->
+    <div class="card" id="detailCard" style="display:none;">
       <h1>Location Detail</h1>
 
       <div class="row">
@@ -44,20 +58,26 @@
         <img id="photoPreview" class="thumb" style="width:96px;height:96px;" alt="Location photo" />
         <div>
           <input id="photoFile" type="file" accept="image/*" disabled />
-          <div class="small-note">Photo update controlled by Edit permission (coming next).</div>
+          <div class="small-note">We’ll wire editing after permissions + history rules are finalized.</div>
         </div>
       </div>
 
       <div class="hr"></div>
 
-      <button id="editBtn" class="btn secondary" disabled>Edit (coming next)</button>
-      <button id="saveBtn" class="btn" disabled>Save (coming next)</button>
-      <div class="small-note">We’ll wire edit/save once we finalize permission checks + history rules.</div>
+      <button id="editBtn" class="btn secondary" disabled>Edit (next)</button>
+      <button id="saveBtn" class="btn" disabled>Save (next)</button>
     </div>
   </div>
 
   <script>
     const banner = document.getElementById("banner");
+    const pickerCard = document.getElementById("pickerCard");
+    const detailCard = document.getElementById("detailCard");
+
+    const locationPicker = document.getElementById("locationPicker");
+    const btnOpen = document.getElementById("btnOpen");
+    const btnAdd = document.getElementById("btnAdd");
+
     const locationCodeEl = document.getElementById("locationCode");
     const locationIdEl = document.getElementById("locationId");
     const locationDescEl = document.getElementById("locationDescription");
@@ -69,9 +89,22 @@
       banner.style.display = "block";
     }
 
+    function clearBanner() {
+      banner.style.display = "none";
+    }
+
     function getQS(name) {
       const u = new URL(window.location.href);
       return u.searchParams.get(name);
+    }
+
+    function setQS(params) {
+      const u = new URL(window.location.href);
+      Object.entries(params).forEach(([k,v]) => {
+        if (v === null || v === undefined || v === "") u.searchParams.delete(k);
+        else u.searchParams.set(k, v);
+      });
+      window.location.href = u.toString();
     }
 
     async function requireLogin() {
@@ -84,23 +117,70 @@
       return data.user;
     }
 
-    async function loadLocation() {
+    async function showPicker() {
+      clearBanner();
+      pickerCard.style.display = "block";
+      detailCard.style.display = "none";
+
       const sb = window.getSupabase();
+      const { data, error } = await sb
+        .from("locations")
+        .select("location_code")
+        .order("location_code", { ascending: true });
 
-      const location_id = getQS("location_id");
-      const location_code = getQS("location_code");
-
-      if (!location_id && !location_code) {
-        setBanner("warn", "No location selected. Provide ?location_id=... or ?location_code=...");
+      if (error) {
+        setBanner("err", "Failed to load locations: " + error.message);
         return;
       }
 
-      let q = sb.from("locations").select("*").limit(1);
+      locationPicker.innerHTML = "";
+      (data || []).forEach(r => {
+        const opt = document.createElement("option");
+        opt.value = r.location_code;
+        opt.textContent = r.location_code;
+        locationPicker.appendChild(opt);
+      });
 
+      if ((data || []).length === 0) {
+        const opt = document.createElement("option");
+        opt.value = "";
+        opt.textContent = "(no locations found)";
+        locationPicker.appendChild(opt);
+        btnOpen.disabled = true;
+      } else {
+        btnOpen.disabled = false;
+      }
+    }
+
+    async function loadLocationByParams() {
+      const sb = window.getSupabase();
+
+      const isNew = getQS("new") === "1";
+      const location_id = getQS("location_id");
+      const location_code = getQS("location_code");
+
+      if (isNew) {
+        // For now: just show picker + hint. We’ll implement create/edit flow next.
+        await showPicker();
+        setBanner("warn", "Create flow not wired yet. Select a location, or we’ll implement Add Location next.");
+        return;
+      }
+
+      if (!location_id && !location_code) {
+        await showPicker();
+        return;
+      }
+
+      pickerCard.style.display = "none";
+      detailCard.style.display = "block";
+      clearBanner();
+
+      let q = sb.from("locations").select("*").limit(1);
       if (location_id) q = q.eq("location_id", location_id);
       else q = q.eq("location_code", location_code);
 
       const { data, error } = await q;
+
       if (error) {
         setBanner("err", "Load failed: " + error.message);
         return;
@@ -111,12 +191,10 @@
         return;
       }
 
-      // These names assume: locations(location_id, location_code, location_description, photo_path)
       locationCodeEl.value = row.location_code || "";
       locationIdEl.value = row.location_id || "";
       locationDescEl.value = row.location_description || "";
 
-      // Photo preview (assumes photo_path is a Storage path)
       if (row.photo_path) {
         try {
           const { data: signed, error: sErr } = await sb.storage
@@ -133,18 +211,24 @@
       }
     }
 
+    btnOpen?.addEventListener("click", () => {
+      const code = locationPicker.value;
+      if (!code) return;
+      setQS({ location_code: code, location_id: null, new: null });
+    });
+
+    btnAdd?.addEventListener("click", () => {
+      setQS({ new: "1", location_code: null, location_id: null });
+    });
+
     (async function boot(){
-      // Nav
       if (window.APP_NAV?.render) await window.APP_NAV.render("navBar");
 
-      // Auth
       const user = await requireLogin();
       if (!user) return;
 
-      // Data
-      await loadLocation();
+      await loadLocationByParams();
     })();
   </script>
 </body>
 </html>
-
