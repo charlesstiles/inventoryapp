@@ -1,232 +1,152 @@
 <!doctype html>
-<html lang="en">
+<html>
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Container Contents</title>
-  <link rel="stylesheet" href="./styles.css?v=1" />
-  <script src="./config.js?v=1"></script>
+  <title>Container</title>
+  <link rel="stylesheet" href="styles.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="./navigation.js?v=1"></script>
-  <script src="https://cdn.jsdelivr.net/npm/quagga@0.12.1/dist/quagga.min.js"></script>
+  <script src="config.js"></script>
+  <script src="navigation.js"></script>
 </head>
 <body>
-  <header>
-    <h1>Container Contents</h1>
+  <div class="page">
     <div id="navBar"></div>
-  </header>
+    <div id="banner" class="banner" style="display:none;"></div>
 
-  <div class="card">
-    <label for="containerCode">Container Code</label>
-    <input id="containerCode" type="text" placeholder="e.g. TOTE0076" />
+    <div class="card">
+      <h1>Container</h1>
 
-    <div class="row3">
-      <button id="btnScanContainer" class="btn-secondary">Scan Container</button>
-      <button id="btnShow" class="btn" disabled>Show Contents</button>
-      <button id="btnClear" class="btn-secondary">Clear</button>
-    </div>
+      <label>Container Code</label>
+      <input id="containerCode" type="text" placeholder="e.g. TOTE0076" />
 
-    <div id="msg" class="error hidden"></div>
+      <div class="hr"></div>
 
-    <table class="table" id="tbl">
-      <thead>
-        <tr>
-          <th>Photo</th>
-          <th>Description</th>
-          <th>Created</th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
+      <button class="btn disabled" id="btnShow" disabled>Show Contents</button>
+      <div class="small-note">Button enabled when a container code is entered.</div>
 
-    <div class="small muted" id="lastScan">Last scan: —</div>
-  </div>
+      <div class="hr"></div>
 
-  <!-- SCANNER OVERLAY -->
-  <div id="scanOverlay" class="overlay">
-    <div class="overlay-inner">
-      <div class="overlay-header">
-        <div>
-          Scan Code 39 Container Label
-          <div class="meta">Hold barcode inside the frame. It will auto-fill the container code.</div>
-        </div>
-        <button id="btnScanClose" class="btn-secondary">Close</button>
-      </div>
+      <table class="table" id="tbl" style="display:none;">
+        <thead>
+          <tr>
+            <th></th>
+            <th>Description</th>
+            <th>Qty</th>
+            <th>User</th>
+            <th>Created</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
 
-      <div id="scannerArea">
-        <div class="scan-guide">
-          <div class="scan-frame"></div>
-        </div>
-      </div>
-
-      <div class="overlay-footer">
-        If it feels “zoomed”, keep the barcode centered in the frame and move the phone back slightly.
-      </div>
+      <div class="small-note" id="note"></div>
     </div>
   </div>
 
 <script>
-(() => {
-  const cfg = window.APP_CONFIG || {};
-  const sb = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
-  window.APP_SUPABASE = sb;
-
-  const containerEl = document.getElementById("containerCode");
-  const btnScan = document.getElementById("btnScanContainer");
+(function(){
+  const banner = document.getElementById("banner");
+  const containerCodeEl = document.getElementById("containerCode");
   const btnShow = document.getElementById("btnShow");
-  const btnClear = document.getElementById("btnClear");
-  const msg = document.getElementById("msg");
-  const tbody = document.querySelector("#tbl tbody");
-  const lastScan = document.getElementById("lastScan");
+  const tbl = document.getElementById("tbl");
+  const tbody = document.getElementById("tbody");
+  const note = document.getElementById("note");
 
-  const overlay = document.getElementById("scanOverlay");
-  const btnScanClose = document.getElementById("btnScanClose");
+  function showBanner(type, msg){
+    banner.className = "banner " + (type || "ok");
+    banner.textContent = msg;
+    banner.style.display = "block";
+    setTimeout(() => banner.style.display = "none", 4500);
+  }
 
-  function show(el, text) { el.textContent = text || ""; el.classList.remove("hidden"); }
-  function hide(el) { el.classList.add("hidden"); el.textContent = ""; }
-  function normCode39(s) { return (s || "").trim().replace(/\s+/g, " "); }
-
-  async function requireAuthOrRedirect() {
-    const { data } = await sb.auth.getSession();
-    if (!data?.session) {
-      location.href = "./capture.html?v=" + Date.now();
-      return false;
+  async function requireAuth(){
+    await window.APP_NAV.render("navBar");
+    const sb = getSupabase();
+    const { data } = await sb.auth.getUser();
+    if (!data.user){
+      window.location.href = "capture.html";
+      return null;
     }
-    return true;
+    return data.user;
   }
 
-  async function boot() {
-    const ok = await requireAuthOrRedirect();
-    if (!ok) return;
-    if (window.APP_NAV?.render) await window.APP_NAV.render("navBar");
-    updateBtnState();
+  function updateButtonState(){
+    const val = containerCodeEl.value.trim();
+    const ok = val.length > 0;
+    btnShow.disabled = !ok;
+    btnShow.classList.toggle("disabled", !ok);
   }
 
-  function updateBtnState() {
-    const hasCode = !!normCode39(containerEl.value);
-    btnShow.disabled = !hasCode;
+  containerCodeEl.addEventListener("input", updateButtonState);
+
+  async function signedThumb(path){
+    if (!path) return null;
+    const sb = getSupabase();
+    const { data, error } = await sb.storage.from("item-photos").createSignedUrl(path, 60*30);
+    if (error) return null;
+    return data?.signedUrl || null;
   }
 
-  containerEl.addEventListener("input", updateBtnState);
+  function esc(s){ return (s||"").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
 
-  btnClear.addEventListener("click", () => {
-    containerEl.value = "";
-    updateBtnState();
-    tbody.innerHTML = "";
-    hide(msg);
-    containerEl.focus();
-  });
-
-  // Scanner
-  function stopScanner() { try { Quagga.stop(); } catch (_) {} }
-
-  function openScanner() {
-    overlay.style.display = "block";
-    stopScanner();
-    lastScan.textContent = "Last scan: —";
-
-    Quagga.init({
-      inputStream: {
-        type: "LiveStream",
-        target: document.querySelector("#scannerArea"),
-        constraints: { facingMode: "environment" },
-        area: { top: "15%", right: "10%", left: "10%", bottom: "15%" }
-      },
-      decoder: { readers: ["code_39_reader"], multiple: false },
-      locate: true,
-      numOfWorkers: 1
-    }, (err) => {
-      if (err) return show(msg, "Scanner init failed: " + err.message);
-      Quagga.start();
-    });
-
-    Quagga.offDetected();
-    Quagga.onDetected((result) => {
-      const code = normCode39(result?.codeResult?.code);
-      if (!code) return;
-      containerEl.value = code;
-      updateBtnState();
-      lastScan.textContent = "Last scan: " + code;
-      overlay.style.display = "none";
-      stopScanner();
-    });
-  }
-
-  btnScan.addEventListener("click", openScanner);
-  btnScanClose.addEventListener("click", () => { overlay.style.display = "none"; stopScanner(); });
-
-  // Show contents
   btnShow.addEventListener("click", async () => {
-    hide(msg);
-    tbody.innerHTML = "";
+    const user = await requireAuth();
+    if (!user) return;
 
-    const ok = await requireAuthOrRedirect();
-    if (!ok) return;
-
-    const code = normCode39(containerEl.value);
+    const code = containerCodeEl.value.trim();
     if (!code) return;
 
-    btnShow.disabled = true;
-    try {
-      const { data, error } = await sb
+    tbody.innerHTML = "";
+    tbl.style.display = "none";
+    note.textContent = "Loading…";
+
+    try{
+      const sb = getSupabase();
+      const { data: items, error } = await sb
         .from("items")
-        .select("description, photo_path, created_at")
+        .select("ref_uid, item_description, quantity, created_by, created_at, photo_path")
+        .eq("is_active", true)
         .eq("container_code", code)
-        .order("created_at", { ascending: false })
-        .limit(500);
+        .order("created_at", { ascending:false })
+        .limit(400);
 
       if (error) throw error;
 
-      for (const r of (data || [])) {
+      if (!items?.length){
+        note.textContent = "No items found.";
+        return;
+      }
+
+      tbl.style.display = "table";
+      note.textContent = `${items.length} item(s).`;
+
+      for (const it of items){
         const tr = document.createElement("tr");
+        tr.style.cursor = "pointer";
+        tr.addEventListener("click", () => {
+          window.location.href = `item_detail.html?ref_uid=${encodeURIComponent(it.ref_uid)}`;
+        });
+
+        const thumbUrl = await signedThumb(it.photo_path);
         tr.innerHTML = `
-          <td>
-            <div class="thumbWrap shimmer"></div>
-          </td>
-          <td>${escapeHtml(r.description || "")}</td>
-          <td>${formatDt(r.created_at)}</td>
+          <td>${thumbUrl ? `<img class="thumb" src="${thumbUrl}" />` : ""}</td>
+          <td>${esc(it.item_description)}</td>
+          <td class="mono">${esc(String(it.quantity ?? 1))}</td>
+          <td class="mono">${esc(it.created_by || "")}</td>
+          <td class="mono">${esc(new Date(it.created_at).toLocaleString())}</td>
         `;
-
-        const wrap = tr.querySelector(".thumbWrap");
-        if (r.photo_path) {
-          const { data: signed, error: sErr } = await sb.storage
-            .from("item-photos")
-            .createSignedUrl(r.photo_path, 60 * 30);
-          if (!sErr && signed?.signedUrl) {
-            const img = document.createElement("img");
-            img.className = "thumb";
-            img.onload = () => { img.classList.add("loaded"); wrap.classList.remove("shimmer"); };
-            img.src = signed.signedUrl;
-            wrap.appendChild(img);
-          } else {
-            wrap.classList.remove("shimmer");
-          }
-        } else {
-          wrap.classList.remove("shimmer");
-        }
-
         tbody.appendChild(tr);
       }
-    } catch (e) {
-      show(msg, (e && e.message) ? e.message : String(e));
-    } finally {
-      btnShow.disabled = !normCode39(containerEl.value);
+
+    }catch(e){
+      showBanner("err","Load failed: " + (e.message || e));
+      note.textContent = "";
     }
   });
 
-  function formatDt(v) {
-    if (!v) return "";
-    const d = new Date(v);
-    return isNaN(d.getTime()) ? String(v) : d.toLocaleString();
-  }
-
-  function escapeHtml(s) {
-    return String(s).replace(/[&<>"']/g, m => ({
-      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
-    }[m]));
-  }
-
-  boot();
+  requireAuth();
+  updateButtonState();
 })();
 </script>
 </body>
