@@ -1,122 +1,166 @@
 <!doctype html>
-<html lang="en">
+<html>
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Inventory Search</title>
-  <link rel="stylesheet" href="./styles.css?v=1" />
-  <script src="./config.js?v=1"></script>
+  <title>Search</title>
+  <link rel="stylesheet" href="styles.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="./navigation.js?v=1"></script>
+  <script src="config.js"></script>
+  <script src="navigation.js"></script>
 </head>
 <body>
-  <header>
-    <h1>Inventory Search</h1>
+  <div class="page">
     <div id="navBar"></div>
-  </header>
+    <div id="banner" class="banner" style="display:none;"></div>
 
-  <div class="card">
-    <label for="q">Search items</label>
-    <input id="q" type="text" placeholder="e.g. hammer" />
-    <button id="btnSearch" class="btn">Search</button>
-    <div id="msg" class="error hidden"></div>
+    <div class="card">
+      <h1>Search</h1>
 
-    <table class="table" id="tbl">
-      <thead>
-        <tr>
-          <th>Description</th>
-          <th>Container</th>
-          <th>Created</th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
+      <label>Search (wildcard before/after)</label>
+      <div class="row">
+        <input id="q" type="text" placeholder="e.g. hammer" />
+        <button class="btn secondary" id="btnGo" style="max-width:160px;">Search</button>
+      </div>
+
+      <table class="table" id="tbl" style="display:none;">
+        <thead>
+          <tr>
+            <th></th>
+            <th>Description</th>
+            <th>Container</th>
+            <th>User</th>
+            <th>Created</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+
+      <div class="small-note" id="note"></div>
+    </div>
   </div>
 
 <script>
-(() => {
-  const cfg = window.APP_CONFIG || {};
-  const sb = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
-  window.APP_SUPABASE = sb;
-
+(function(){
+  const banner = document.getElementById("banner");
   const qEl = document.getElementById("q");
-  const btn = document.getElementById("btnSearch");
-  const msg = document.getElementById("msg");
-  const tbody = document.querySelector("#tbl tbody");
+  const btnGo = document.getElementById("btnGo");
+  const tbl = document.getElementById("tbl");
+  const tbody = document.getElementById("tbody");
+  const note = document.getElementById("note");
 
-  function show(el, text) { el.textContent = text || ""; el.classList.remove("hidden"); }
-  function hide(el) { el.classList.add("hidden"); el.textContent = ""; }
+  function showBanner(type, msg){
+    banner.className = "banner " + (type || "ok");
+    banner.textContent = msg;
+    banner.style.display = "block";
+    setTimeout(() => banner.style.display = "none", 4500);
+  }
 
-  async function requireAuthOrRedirect() {
-    const { data } = await sb.auth.getSession();
-    if (!data?.session) {
-      location.href = "./capture.html?v=" + Date.now();
-      return false;
+  async function requireAuth(){
+    await window.APP_NAV.render("navBar");
+    const sb = getSupabase();
+    const { data } = await sb.auth.getUser();
+    if (!data.user){
+      window.location.href = "capture.html";
+      return null;
     }
-    return true;
+    return data.user;
   }
 
-  async function boot() {
-    const ok = await requireAuthOrRedirect();
-    if (!ok) return;
-    if (window.APP_NAV?.render) await window.APP_NAV.render("navBar");
+  async function signedThumb(path){
+    if (!path) return null;
+    const sb = getSupabase();
+    const { data, error } = await sb.storage.from("item-photos").createSignedUrl(path, 60 * 30);
+    if (error) return null;
+    return data?.signedUrl || null;
   }
 
-  boot();
+  function esc(s){ return (s||"").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
 
-  async function doSearch() {
-    hide(msg);
+  async function runSearch(){
+    const user = await requireAuth();
+    if (!user) return;
+
+    const q = qEl.value.trim();
+    if (!q){
+      showBanner("warn","Enter a search term.");
+      return;
+    }
+
+    note.textContent = "Searching…";
     tbody.innerHTML = "";
+    tbl.style.display = "none";
 
-    const ok = await requireAuthOrRedirect();
-    if (!ok) return;
-
-    const q = (qEl.value || "").trim();
-    if (!q) return show(msg, "Enter a search term.");
-
-    btn.disabled = true;
-    try {
-      // wildcard before/after
+    try{
+      const sb = getSupabase();
       const like = `%${q}%`;
-      const { data, error } = await sb
+
+      const { data: items, error } = await sb
         .from("items")
-        .select("description, container_code, created_at")
-        .ilike("description", like)
-        .order("created_at", { ascending: false })
+        .select("item_id, ref_uid, container_code, item_description, created_by, created_at, photo_path")
+        .eq("is_active", true)
+        .ilike("item_description", like)
+        .order("created_at", { ascending:false })
         .limit(200);
 
       if (error) throw error;
 
-      for (const r of (data || [])) {
+      if (!items?.length){
+        note.textContent = "No results.";
+        return;
+      }
+
+      tbl.style.display = "table";
+      note.textContent = `${items.length} result(s).`;
+
+      for (const it of items){
         const tr = document.createElement("tr");
+        tr.style.cursor = "pointer";
+
+        // row click -> item_detail (unless clicking container/user)
+        tr.addEventListener("click", () => {
+          window.location.href = `item_detail.html?ref_uid=${encodeURIComponent(it.ref_uid)}`;
+        });
+
+        const thumbUrl = await signedThumb(it.photo_path);
+
         tr.innerHTML = `
-          <td>${escapeHtml(r.description || "")}</td>
-          <td>${escapeHtml(r.container_code || "")}</td>
-          <td>${formatDt(r.created_at)}</td>
+          <td>${thumbUrl ? `<img class="thumb" src="${thumbUrl}" />` : ""}</td>
+          <td>${esc(it.item_description)}</td>
+          <td class="mono"><a href="#" data-kind="container">${esc(it.container_code)}</a></td>
+          <td class="mono"><a href="#" data-kind="user">${esc(it.created_by || "")}</a></td>
+          <td class="mono">${esc(new Date(it.created_at).toLocaleString())}</td>
         `;
+
+        // container click -> container_detail
+        tr.querySelectorAll('a[data-kind="container"]').forEach(a => {
+          a.addEventListener("click", (e) => {
+            e.preventDefault(); e.stopPropagation();
+            window.location.href = `container_detail.html?container_code=${encodeURIComponent(it.container_code)}`;
+          });
+        });
+
+        // user click -> user_activity
+        tr.querySelectorAll('a[data-kind="user"]').forEach(a => {
+          a.addEventListener("click", (e) => {
+            e.preventDefault(); e.stopPropagation();
+            window.location.href = `user_activity.html?user=${encodeURIComponent(it.created_by || "")}`;
+          });
+        });
+
         tbody.appendChild(tr);
       }
-    } catch (e) {
-      show(msg, (e && e.message) ? e.message : String(e));
-    } finally {
-      btn.disabled = false;
+
+    }catch(e){
+      showBanner("err","Search error: " + (e.message || e));
+      note.textContent = "";
     }
   }
 
-  function formatDt(v) {
-    if (!v) return "";
-    const d = new Date(v);
-    return isNaN(d.getTime()) ? String(v) : d.toLocaleString();
-  }
+  btnGo.addEventListener("click", runSearch);
+  qEl.addEventListener("keydown", (e)=>{ if(e.key==="Enter") runSearch(); });
 
-  function escapeHtml(s) {
-    return String(s).replace(/[&<>"']/g, m => ({
-      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
-    }[m]));
-  }
-
-  btn.addEventListener("click", doSearch);
-  qEl.addEventListener("keydown", (e) => { if (e.key === "Enter") doSearch(); });
+  requireAuth();
 })();
 </script>
 </body>
