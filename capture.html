@@ -1,12 +1,11 @@
 <!--
-Update: Fix mobile RLS "new row violates row-level security policy for table containers" by using a SINGLE Supabase client instance per page load.
-Why: On iOS/mobile, repeatedly calling getSupabase() can create multiple clients; some requests may execute without an access token and be treated as anon, triggering RLS failures.
+Update: Fix "Auth: checking..." hang on iOS by making navbar render non-blocking (APP_NAV.render can stall).
+Why: If APP_NAV.render never resolves, requireAuth never completes and login/capture UI never appears.
 Changes:
-  1) Create one Supabase client (sb) once and reuse it everywhere.
-  2) Add visible Auth Status indicator.
-  3) Wait briefly for session restore on mobile; disable Save until authenticated.
-  4) Add stronger guards before container/item inserts to ensure a session exists.
-Revision: 2026-01-09.v3
+  1) Wrap APP_NAV.render in a safe timeout so auth checks proceed even if nav fails.
+  2) Add simple on-page error capture (shows banner + authStatus if JS throws).
+  3) Keep singleton Supabase client usage for consistent auth headers.
+Revision: 2026-01-09.v4
 -->
 <!doctype html>
 <html>
@@ -107,9 +106,7 @@ Revision: 2026-01-09.v3
   const containerCodeEl = document.getElementById("containerCode");
   const containerSetNote = document.getElementById("containerSetNote");
 
-  // ✅ IMPORTANT: Create ONE Supabase client instance for this page load.
-  // If getSupabase() creates a new client each call, using it multiple times can cause
-  // authenticated checks to pass but inserts to run as anon (RLS failure).
+  // SINGLE client for the page
   const sb = getSupabase();
 
   function setAuthStatus(msg){
@@ -126,8 +123,21 @@ Revision: 2026-01-09.v3
     banner.className = "banner " + (type || "ok");
     banner.textContent = msg;
     banner.style.display = "block";
-    setTimeout(() => banner.style.display = "none", 4500);
+    setTimeout(() => banner.style.display = "none", 6500);
   }
+
+  // Show JS errors on-screen (mobile-safe)
+  window.addEventListener("error", (evt) => {
+    const msg = evt?.message || "Unknown script error";
+    setAuthStatus("Auth: error (see banner)");
+    showBanner("err", "Script error: " + msg);
+  });
+
+  window.addEventListener("unhandledrejection", (evt) => {
+    const msg = evt?.reason?.message || String(evt?.reason || "Unknown promise rejection");
+    setAuthStatus("Auth: error (see banner)");
+    showBanner("err", "Unhandled: " + msg);
+  });
 
   function code39FullAsciiNormalize(raw){
     if (!raw) return raw;
@@ -147,6 +157,19 @@ Revision: 2026-01-09.v3
     return out;
   }
 
+  async function renderNavSafe(timeoutMs = 1200){
+    try{
+      if (!window.APP_NAV || typeof window.APP_NAV.render !== "function") return;
+      await Promise.race([
+        window.APP_NAV.render("navBar"),
+        new Promise((res) => setTimeout(res, timeoutMs))
+      ]);
+    }catch(e){
+      // Do not block auth/UI if nav rendering fails
+      console.warn("Nav render failed:", e);
+    }
+  }
+
   async function waitForSession(maxMs = 2500){
     const start = Date.now();
     while (Date.now() - start < maxMs){
@@ -158,21 +181,19 @@ Revision: 2026-01-09.v3
   }
 
   async function requireAuth(){
-    await window.APP_NAV.render("navBar");
-
     setSaveEnabled(false);
-    setAuthStatus("Auth: checking session...");
+    setAuthStatus("Auth: checking...");
 
-    // Wait briefly for mobile session restore
+    // ✅ Do NOT let nav rendering stall auth/UI
+    await renderNavSafe(1200);
+
     const session = await waitForSession(2500);
-
     if (session?.user){
       setAuthStatus("Auth: OK");
       setSaveEnabled(true);
       return session.user;
     }
 
-    // Fallback check
     const { data, error } = await sb.auth.getUser();
     if (!error && data?.user){
       setAuthStatus("Auth: OK");
@@ -213,23 +234,7 @@ Revision: 2026-01-09.v3
     }
   });
 
-
-
-
-
-  
-  const { data: roleCheck, error: roleErr } = await sb.rpc('auth_role_check');
-console.log("DB role seen by Postgres:", roleCheck);
-
-
-
-
-
-
-
-  
   async function ensureActiveContainer(container_code){
-    // Active-only lookup
     let { data: existing, error } = await sb
       .from("containers")
       .select("container_id, ref_uid, container_code, is_active")
@@ -240,13 +245,9 @@ console.log("DB role seen by Postgres:", roleCheck);
     if (error) throw error;
     if (existing) return existing;
 
-    // Guard: confirm session exists right before insert
     const { data: { session } } = await sb.auth.getSession();
-    if (!session?.user){
-      throw new Error("Not logged in (session missing). Please sign in again.");
-    }
+    if (!session?.user) throw new Error("Not logged in (session missing). Please sign in again.");
 
-    // Create
     let { data: created, error: insErr } = await sb
       .from("containers")
       .insert([{ container_code }])
@@ -255,7 +256,6 @@ console.log("DB role seen by Postgres:", roleCheck);
 
     if (insErr) throw insErr;
 
-    // If trigger not present and ref_uid not set, backfill
     if (!created.ref_uid){
       const { data: upd, error: updErr } = await sb
         .from("containers")
@@ -267,7 +267,6 @@ console.log("DB role seen by Postgres:", roleCheck);
       created = upd;
     }
 
-    // Redirect immediately to container_detail for enrichment, then return to capture
     const returnUrl = encodeURIComponent("capture.html");
     window.location.href = `container_detail.html?ref_uid=${encodeURIComponent(created.ref_uid)}&return=${returnUrl}`;
     return created;
@@ -286,8 +285,7 @@ console.log("DB role seen by Postgres:", roleCheck);
     const canvas = document.createElement("canvas");
     canvas.width = nw;
     canvas.height = nh;
-    const ctx = canvas.getContext("2d");
-    ctx.drawImage(img, 0, 0, nw, nh);
+    canvas.getContext("2d").drawImage(img, 0, 0, nw, nh);
 
     const blob = await new Promise((res) => canvas.toBlob(res, "image/jpeg", quality));
     URL.revokeObjectURL(url);
@@ -310,29 +308,19 @@ console.log("DB role seen by Postgres:", roleCheck);
 
       setAuthStatus("Auth: OK (saving...)");
 
-      // Ensure container exists (may redirect if newly created)
       await ensureActiveContainer(container_code);
 
-      // Guard again: session must exist for item insert too
       const { data: { session } } = await sb.auth.getSession();
-      if (!session?.user){
-        throw new Error("Not logged in (session missing). Please sign in again.");
-      }
+      if (!session?.user) throw new Error("Not logged in (session missing). Please sign in again.");
 
-      // Insert item row
       let { data: item, error: insErr } = await sb
         .from("items")
-        .insert([{
-          container_code,
-          item_description,
-          quantity
-        }])
+        .insert([{ container_code, item_description, quantity }])
         .select("item_id, ref_uid, container_code, item_description, quantity, is_active")
         .single();
 
       if (insErr) throw insErr;
 
-      // Backfill ref_uid if needed
       if (!item.ref_uid){
         const { data: updItem, error: updErr } = await sb
           .from("items")
@@ -344,7 +332,6 @@ console.log("DB role seen by Postgres:", roleCheck);
         item = updItem;
       }
 
-      // Upload photo to item-photos bucket
       const jpegBlob = await compressImageToJpeg(photoFile, 1024, 0.72);
       const path = `items/${item.ref_uid}/${item.item_id}.jpg`;
 
@@ -354,7 +341,6 @@ console.log("DB role seen by Postgres:", roleCheck);
 
       if (upErr) throw upErr;
 
-      // Save path on item row
       const { error: savePathErr } = await sb
         .from("items")
         .update({ photo_path: path })
@@ -389,12 +375,7 @@ console.log("DB role seen by Postgres:", roleCheck);
           width: { ideal: 1280 },
           height: { ideal: 720 }
         },
-        area: {
-          top: "20%",
-          right: "10%",
-          left: "10%",
-          bottom: "20%"
-        }
+        area: { top:"20%", right:"10%", left:"10%", bottom:"20%" }
       },
       decoder: { readers: ["code_39_reader"] },
       locate: true
@@ -416,7 +397,6 @@ console.log("DB role seen by Postgres:", roleCheck);
       containerCodeEl.value = normalized;
       containerSetNote.textContent = `Container set: ${normalized}`;
       showBanner("ok", `Scanned: ${normalized}`);
-
       closeScan();
     });
   }
@@ -434,4 +414,3 @@ console.log("DB role seen by Postgres:", roleCheck);
 </script>
 </body>
 </html>
-
