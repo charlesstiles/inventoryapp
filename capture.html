@@ -1,7 +1,12 @@
 <!--
-Update: Add mobile-safe authentication gating to prevent "new row violates row-level security policy" errors when the page is used on iOS/Android and the Supabase session has not finished restoring. Adds an on-page Auth Status indicator, waits briefly for session availability, blocks Save when not authenticated, and logs clearer save-state banners.
-Revision: 2026-01-09.v2
-Why: On mobile browsers, Supabase session restoration can lag or be missing, causing inserts to run as anon and fail RLS. This change makes auth state visible and prevents saving until authenticated.
+Update: Fix mobile RLS "new row violates row-level security policy for table containers" by using a SINGLE Supabase client instance per page load.
+Why: On iOS/mobile, repeatedly calling getSupabase() can create multiple clients; some requests may execute without an access token and be treated as anon, triggering RLS failures.
+Changes:
+  1) Create one Supabase client (sb) once and reuse it everywhere.
+  2) Add visible Auth Status indicator.
+  3) Wait briefly for session restore on mobile; disable Save until authenticated.
+  4) Add stronger guards before container/item inserts to ensure a session exists.
+Revision: 2026-01-09.v3
 -->
 <!doctype html>
 <html>
@@ -28,7 +33,7 @@ Why: On mobile browsers, Supabase session restoration can lag or be missing, cau
       <div id="authStatus" style="font:12px/1.3 system-ui; padding:6px 10px; background:#fff3cd; border:1px solid #ffeeba; border-radius:6px; margin:8px 0;">
         Auth: checking...
       </div>
-  
+
       <!-- LOGIN -->
       <div id="loginBox" style="display:none;">
         <label>Email</label>
@@ -102,6 +107,11 @@ Why: On mobile browsers, Supabase session restoration can lag or be missing, cau
   const containerCodeEl = document.getElementById("containerCode");
   const containerSetNote = document.getElementById("containerSetNote");
 
+  // ✅ IMPORTANT: Create ONE Supabase client instance for this page load.
+  // If getSupabase() creates a new client each call, using it multiple times can cause
+  // authenticated checks to pass but inserts to run as anon (RLS failure).
+  const sb = getSupabase();
+
   function setAuthStatus(msg){
     if (authStatusEl) authStatusEl.textContent = msg;
   }
@@ -121,8 +131,6 @@ Why: On mobile browsers, Supabase session restoration can lag or be missing, cau
 
   function code39FullAsciiNormalize(raw){
     if (!raw) return raw;
-    // Quagga sometimes returns Code39 Full ASCII sequences using '+' prefix.
-    // Implement minimal: +A..+Z => lowercase a..z. Leave other chars as-is.
     let out = "";
     for (let i=0; i<raw.length; i++){
       const ch = raw[i];
@@ -139,8 +147,7 @@ Why: On mobile browsers, Supabase session restoration can lag or be missing, cau
     return out;
   }
 
-  // Mobile-safe session wait (avoids race where save runs as anon)
-  async function waitForSession(sb, maxMs = 2500){
+  async function waitForSession(maxMs = 2500){
     const start = Date.now();
     while (Date.now() - start < maxMs){
       const { data: { session } } = await sb.auth.getSession();
@@ -150,33 +157,31 @@ Why: On mobile browsers, Supabase session restoration can lag or be missing, cau
     return null;
   }
 
-  // Single source of truth for auth gating
   async function requireAuth(){
     await window.APP_NAV.render("navBar");
-    const sb = getSupabase();
 
     setSaveEnabled(false);
     setAuthStatus("Auth: checking session...");
 
-    // Prefer session restore first (faster & more reliable than getUser during restore)
-    const session = await waitForSession(sb, 2500);
+    // Wait briefly for mobile session restore
+    const session = await waitForSession(2500);
 
-    if (!session?.user){
-      // Fallback to getUser (sometimes returns when session restore is delayed)
-      const { data } = await sb.auth.getUser();
-      if (data?.user){
-        setAuthStatus("Auth: OK");
-        setSaveEnabled(true);
-        return data.user;
-      }
-
-      setAuthStatus("Auth: NOT logged in. Please sign in.");
-      return null;
+    if (session?.user){
+      setAuthStatus("Auth: OK");
+      setSaveEnabled(true);
+      return session.user;
     }
 
-    setAuthStatus("Auth: OK");
-    setSaveEnabled(true);
-    return session.user;
+    // Fallback check
+    const { data, error } = await sb.auth.getUser();
+    if (!error && data?.user){
+      setAuthStatus("Auth: OK");
+      setSaveEnabled(true);
+      return data.user;
+    }
+
+    setAuthStatus("Auth: NOT logged in. Please sign in.");
+    return null;
   }
 
   async function init(){
@@ -192,7 +197,6 @@ Why: On mobile browsers, Supabase session restoration can lag or be missing, cau
 
   btnLogin.addEventListener("click", async () => {
     try{
-      const sb = getSupabase();
       const email = document.getElementById("email").value.trim();
       const password = document.getElementById("password").value;
 
@@ -210,8 +214,6 @@ Why: On mobile browsers, Supabase session restoration can lag or be missing, cau
   });
 
   async function ensureActiveContainer(container_code){
-    const sb = getSupabase();
-
     // Active-only lookup
     let { data: existing, error } = await sb
       .from("containers")
@@ -221,10 +223,9 @@ Why: On mobile browsers, Supabase session restoration can lag or be missing, cau
       .maybeSingle();
 
     if (error) throw error;
-
     if (existing) return existing;
 
-    // IMPORTANT: Before creating, double-check we're authenticated
+    // Guard: confirm session exists right before insert
     const { data: { session } } = await sb.auth.getSession();
     if (!session?.user){
       throw new Error("Not logged in (session missing). Please sign in again.");
@@ -254,12 +255,10 @@ Why: On mobile browsers, Supabase session restoration can lag or be missing, cau
     // Redirect immediately to container_detail for enrichment, then return to capture
     const returnUrl = encodeURIComponent("capture.html");
     window.location.href = `container_detail.html?ref_uid=${encodeURIComponent(created.ref_uid)}&return=${returnUrl}`;
-    // NOTE: user will come back from container_detail; capture page will still be ready.
     return created;
   }
 
   async function compressImageToJpeg(file, maxDim=1024, quality=0.72){
-    // Resize to keep storage low. 1024 max dimension is plenty for 1.5"x1.5" labels and on-screen viewing.
     const img = new Image();
     const url = URL.createObjectURL(file);
     await new Promise((res, rej) => { img.onload=res; img.onerror=rej; img.src=url; });
@@ -282,7 +281,6 @@ Why: On mobile browsers, Supabase session restoration can lag or be missing, cau
 
   btnSave.addEventListener("click", async () => {
     try{
-      // Guard: ensure we are authenticated right now (prevents RLS failures on mobile)
       const user = await requireAuth();
       if (!user) { showBanner("err","Please sign in."); return; }
 
@@ -297,18 +295,16 @@ Why: On mobile browsers, Supabase session restoration can lag or be missing, cau
 
       setAuthStatus("Auth: OK (saving...)");
 
-      // Ensure container exists (will redirect if newly created)
-      const container = await ensureActiveContainer(container_code);
+      // Ensure container exists (may redirect if newly created)
+      await ensureActiveContainer(container_code);
 
-      // Insert item row (active version)
-      const sb = getSupabase();
-
-      // Extra guard: confirm session is present at insert time
+      // Guard again: session must exist for item insert too
       const { data: { session } } = await sb.auth.getSession();
       if (!session?.user){
         throw new Error("Not logged in (session missing). Please sign in again.");
       }
 
+      // Insert item row
       let { data: item, error: insErr } = await sb
         .from("items")
         .insert([{
@@ -357,7 +353,6 @@ Why: On mobile browsers, Supabase session restoration can lag or be missing, cau
       document.getElementById("photo").value = "";
       document.getElementById("desc").value = "";
       document.getElementById("qty").value = "1";
-      // keep same container
     }catch(e){
       setAuthStatus("Auth: error (see banner)");
       showBanner("err", "Save failed: " + (e.message || e));
@@ -368,10 +363,8 @@ Why: On mobile browsers, Supabase session restoration can lag or be missing, cau
   function openScan(){
     scanModal.style.display = "flex";
     const target = document.getElementById("scanner");
-    target.innerHTML = ""; // reset
+    target.innerHTML = "";
 
-    // Key fix for the "zoomed in after 1–2 seconds" issue:
-    // Use constraints that match the viewport and prefer back camera, avoid huge ideal widths.
     Quagga.init({
       inputStream: {
         type: "LiveStream",
@@ -381,7 +374,7 @@ Why: On mobile browsers, Supabase session restoration can lag or be missing, cau
           width: { ideal: 1280 },
           height: { ideal: 720 }
         },
-        area: { // scan central area (reduces false reads & helps "zoom feel")
+        area: {
           top: "20%",
           right: "10%",
           left: "10%",
@@ -399,7 +392,7 @@ Why: On mobile browsers, Supabase session restoration can lag or be missing, cau
       Quagga.start();
     });
 
-    Quagga.offDetected(); // ensure no stacking handlers
+    Quagga.offDetected();
     Quagga.onDetected((res) => {
       const raw = res?.codeResult?.code;
       if (!raw) return;
