@@ -213,6 +213,21 @@ Revision: 2026-01-09.v3
     }
   });
 
+
+
+
+
+  
+  const { data: roleCheck, error: roleErr } = await sb.rpc('auth_role_check');
+console.log("DB role seen by Postgres:", roleCheck);
+
+
+
+
+
+
+
+  
   async function ensureActiveContainer(container_code){
     // Active-only lookup
     let { data: existing, error } = await sb
@@ -419,3 +434,4 @@ Revision: 2026-01-09.v3
 </script>
 </body>
 </html>
+
