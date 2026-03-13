@@ -1,4 +1,73 @@
 <!--
+Update: Add clear success banner, normalize container codes, prevent duplicate active containers in-app,
+        reduce repeat container checks for faster capture, and enable offline capture queue with background sync.
+Revision: 2026-03-12.v6
+-->
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Inventory Capture</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script src="navigation.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/quagga@0.12.1/dist/quagga.min.js"></script>
+</head>
+<body>
+  <div class="page">
+    <div id="navBar"></div>
+    <div id="banner" class="banner" style="display:none;"></div>
+    <div class="card">
+      <h1>Inventory Capture</h1>
+      <div id="authStatus" style="font:12px/1.3 system-ui; padding:6px 10px; background:#fff3cd; border:1px solid #ffeeba; border-radius:6px; margin:8px 0;">Auth: checking...</div>
+      <div id="offlineStatus" class="small-note" style="margin:8px 0 14px 0;"></div>
+      <div id="loginBox" style="display:none;">
+        <label>Email</label>
+        <input id="email" type="email" placeholder="you@example.com" />
+        <label>Password</label>
+        <input id="password" type="password" placeholder="••••••••" />
+        <div class="hr"></div>
+        <button class="btn" id="btnLogin">Sign In</button>
+        <div class="small-note">Sign-in is required for live sync. Offline capture will still queue locally.</div>
+      </div>
+      <div id="captureBox" style="display:none;">
+        <label>Container Code</label>
+        <div class="row">
+          <input id="containerCode" type="text" placeholder="e.g. TOTE0076" />
+          <button class="btn secondary" id="btnScanContainer" style="max-width:180px;">Scan</button>
+        </div>
+        <div class="small-note" id="containerSetNote"></div>
+        <label>Photo (optional)</label>
+        <input id="photo" type="file" accept="image/*" capture="environment" />
+        <div class="small-note">Provide a photo, a description, or both. At least one is required.</div>
+        <label>Description</label>
+        <textarea id="desc" placeholder="Item description"></textarea>
+        <div class="row">
+          <div>
+            <label>Quantity</label>
+            <input id="qty" type="number" step="0.1" value="1" />
+          </div>
+          <div></div>
+        </div>
+        <div class="hr"></div>
+        <button class="btn" id="btnSave">Save Item</button>
+        <div class="small-note">After save, the form stays ready for the next item in the same container.</div>
+      </div>
+    </div>
+  </div>
+  <div class="modalBackdrop" id="scanModal">
+    <div class="modal">
+      <div class="modalHeader">
+        <h3>Scan Code 39 Container Label</h3>
+      </div>
+    </div>
+  </div>
+<script>
+(function(){
+  const banner = document.getElementById("banner");
+  const loginBox = document.getElementById("loginBox");
   const captureBox = document.getElementById("captureBox");
   const authStatusEl = document.getElementById("authStatus");
   const offlineStatusEl = document.getElementById("offlineStatus");
