@@ -1,109 +1,7 @@
 <!--
-Update: Make photo optional, require photo OR description, remove redirect on auto-created containers,
-        and use client-generated item UUID/path so inserts can include photo_path up front.
-Why: The previous save flow inserted items before photo upload and failed when photo_path was NOT NULL.
-     It also redirected to container detail when a new container was auto-created, interrupting item save.
-Changes:
-  1) Require at least one of: photo or description.
-  2) Change capture UI copy to show photo is optional.
-  3) Remove redirect from ensureActiveContainer(); return the created/found container instead.
-  4) Generate item_id/ref_uid in-browser with crypto.randomUUID().
-  5) If a photo is provided, precompute photo_path and include it in the initial insert.
-  6) Upload the photo after insert; if upload fails, clear photo_path and surface the error.
-Revision: 2026-03-12.v5
--->
-<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Inventory Capture</title>
-  <link rel="stylesheet" href="styles.css" />
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js"></script>
-  <script src="navigation.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/quagga@0.12.1/dist/quagga.min.js"></script>
-</head>
-<body>
-  <div class="page">
-    <div id="navBar"></div>
-
-    <div id="banner" class="banner" style="display:none;"></div>
-
-    <div class="card">
-      <h1>Inventory Capture</h1>
-
-      <!-- AUTH STATUS (mobile-friendly visibility) -->
-      <div id="authStatus" style="font:12px/1.3 system-ui; padding:6px 10px; background:#fff3cd; border:1px solid #ffeeba; border-radius:6px; margin:8px 0;">
-        Auth: checking...
-      </div>
-
-      <!-- LOGIN -->
-      <div id="loginBox" style="display:none;">
-        <label>Email</label>
-        <input id="email" type="email" placeholder="you@example.com" />
-        <label>Password</label>
-        <input id="password" type="password" placeholder="••••••••" />
-        <div class="hr"></div>
-        <button class="btn" id="btnLogin">Sign In</button>
-        <div class="small-note">Sign-in is required before capture/search/container access.</div>
-      </div>
-
-      <!-- CAPTURE -->
-      <div id="captureBox" style="display:none;">
-        <label>Container Code</label>
-        <div class="row">
-          <input id="containerCode" type="text" placeholder="e.g. TOTE0076" />
-          <button class="btn secondary" id="btnScanContainer" style="max-width:180px;">Scan</button>
-        </div>
-        <div class="small-note" id="containerSetNote"></div>
-
-        <label>Photo (optional)</label>
-        <input id="photo" type="file" accept="image/*" capture="environment" />
-        <div class="small-note">Provide a photo, a description, or both. At least one is required.</div>
-
-        <label>Description</label>
-        <textarea id="desc" placeholder="Item description"></textarea>
-
-        <div class="row">
-          <div>
-            <label>Quantity</label>
-            <input id="qty" type="number" step="0.1" value="1" />
-          </div>
-          <div></div>
-        </div>
-
-        <div class="hr"></div>
-        <button class="btn" id="btnSave">Save Item</button>
-        <div class="small-note">After save, the form stays ready for the next item in the same container.</div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Scan Modal -->
-  <div class="modalBackdrop" id="scanModal">
-    <div class="modal">
-      <div class="modalHeader">
-        <h3>Scan Code 39 Container Label</h3>
-        <button class="btn secondary" id="btnCloseScan" style="width:auto;">Close</button>
-      </div>
-      <div class="modalBody">
-        <div class="videoBox">
-          <div class="scanHint"></div>
-          <div id="scanner"></div>
-        </div>
-        <div class="small-note">Tip: hold steady ~8–14 inches away. Align the barcode within the box.</div>
-      </div>
-    </div>
-  </div>
-
-<script>
-(function(){
-  const banner = document.getElementById("banner");
-  const loginBox = document.getElementById("loginBox");
   const captureBox = document.getElementById("captureBox");
   const authStatusEl = document.getElementById("authStatus");
-
+  const offlineStatusEl = document.getElementById("offlineStatus");
   const btnLogin = document.getElementById("btnLogin");
   const btnSave = document.getElementById("btnSave");
   const btnScanContainer = document.getElementById("btnScanContainer");
@@ -111,316 +9,55 @@ Revision: 2026-03-12.v5
   const scanModal = document.getElementById("scanModal");
   const containerCodeEl = document.getElementById("containerCode");
   const containerSetNote = document.getElementById("containerSetNote");
-
-  // SINGLE client for the page
+  const photoEl = document.getElementById("photo");
+  const descEl = document.getElementById("desc");
+  const qtyEl = document.getElementById("qty");
   const sb = getSupabase();
-
-  function setAuthStatus(msg){
-    if (authStatusEl) authStatusEl.textContent = msg;
-  }
-
-  function setSaveEnabled(enabled){
-    btnSave.disabled = !enabled;
-    btnSave.style.opacity = enabled ? "1" : "0.6";
-    btnSave.style.pointerEvents = enabled ? "auto" : "none";
-  }
-
-  function showBanner(type, msg){
-    banner.className = "banner " + (type || "ok");
-    banner.textContent = msg;
-    banner.style.display = "block";
-    setTimeout(() => banner.style.display = "none", 6500);
-  }
-
-  // Show JS errors on-screen (mobile-safe)
-  window.addEventListener("error", (evt) => {
-    const msg = evt?.message || "Unknown script error";
-    setAuthStatus("Auth: error (see banner)");
-    showBanner("err", "Script error: " + msg);
-  });
-
-  window.addEventListener("unhandledrejection", (evt) => {
-    const msg = evt?.reason?.message || String(evt?.reason || "Unknown promise rejection");
-    setAuthStatus("Auth: error (see banner)");
-    showBanner("err", "Unhandled: " + msg);
-  });
-
-  function code39FullAsciiNormalize(raw){
-    if (!raw) return raw;
-    let out = "";
-    for (let i=0; i<raw.length; i++){
-      const ch = raw[i];
-      if (ch === "+" && i+1 < raw.length){
-        const next = raw[i+1];
-        if (next >= "A" && next <= "Z"){
-          out += next.toLowerCase();
-          i++;
-          continue;
-        }
-      }
-      out += ch;
-    }
-    return out;
-  }
-
-  async function renderNavSafe(timeoutMs = 1200){
-    try{
-      if (!window.APP_NAV || typeof window.APP_NAV.render !== "function") return;
-      await Promise.race([
-        window.APP_NAV.render("navBar"),
-        new Promise((res) => setTimeout(res, timeoutMs))
-      ]);
-    }catch(e){
-      // Do not block auth/UI if nav rendering fails
-      console.warn("Nav render failed:", e);
-    }
-  }
-
-  async function waitForSession(maxMs = 2500){
-    const start = Date.now();
-    while (Date.now() - start < maxMs){
-      const { data: { session } } = await sb.auth.getSession();
-      if (session?.user) return session;
-      await new Promise(r => setTimeout(r, 150));
-    }
-    return null;
-  }
-
-  async function requireAuth(){
-    setSaveEnabled(false);
-    setAuthStatus("Auth: checking...");
-
-    // ✅ Do NOT let nav rendering stall auth/UI
-    await renderNavSafe(1200);
-
-    const session = await waitForSession(2500);
-    if (session?.user){
-      setAuthStatus("Auth: OK");
-      setSaveEnabled(true);
-      return session.user;
-    }
-
-    const { data, error } = await sb.auth.getUser();
-    if (!error && data?.user){
-      setAuthStatus("Auth: OK");
-      setSaveEnabled(true);
-      return data.user;
-    }
-
-    setAuthStatus("Auth: NOT logged in. Please sign in.");
-    return null;
-  }
-
-  async function init(){
-    const user = await requireAuth();
-    if (!user){
-      loginBox.style.display = "block";
-      captureBox.style.display = "none";
-      return;
-    }
-    loginBox.style.display = "none";
-    captureBox.style.display = "block";
-  }
-
-  btnLogin.addEventListener("click", async () => {
-    try{
-      const email = document.getElementById("email").value.trim();
-      const password = document.getElementById("password").value;
-
-      setAuthStatus("Auth: signing in...");
-      const { error } = await sb.auth.signInWithPassword({ email, password });
-      if (error) throw error;
-
-      showBanner("ok", "Login successful ✅");
-      await init();
-    }catch(e){
-      setAuthStatus("Auth: NOT logged in. Please sign in.");
-      showBanner("err", "Login failed: " + (e.message || e));
-      setSaveEnabled(false);
-    }
-  });
-
-  async function ensureActiveContainer(container_code){
-    let { data: existing, error } = await sb
-      .from("containers")
-      .select("container_id, ref_uid, container_code, is_active")
-      .eq("container_code", container_code)
-      .eq("is_active", true)
-      .maybeSingle();
-
-    if (error) throw error;
-    if (existing) return existing;
-
-    const { data: { session } } = await sb.auth.getSession();
-    if (!session?.user) throw new Error("Not logged in (session missing). Please sign in again.");
-
-    let { data: created, error: insErr } = await sb
-      .from("containers")
-      .insert([{ container_code }])
-      .select("container_id, ref_uid, container_code, is_active")
-      .single();
-
-    if (insErr) throw insErr;
-
-    if (!created.ref_uid){
-      const { data: upd, error: updErr } = await sb
-        .from("containers")
-        .update({ ref_uid: created.container_id })
-        .eq("container_id", created.container_id)
-        .select("container_id, ref_uid, container_code, is_active")
-        .single();
-      if (updErr) throw updErr;
-      created = upd;
-    }
-
-    return created;
-  }
-
-  async function compressImageToJpeg(file, maxDim=1024, quality=0.72){
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    await new Promise((res, rej) => { img.onload=res; img.onerror=rej; img.src=url; });
-
-    const w = img.width, h = img.height;
-    const scale = Math.min(1, maxDim / Math.max(w,h));
-    const nw = Math.round(w*scale);
-    const nh = Math.round(h*scale);
-
-    const canvas = document.createElement("canvas");
-    canvas.width = nw;
-    canvas.height = nh;
-    canvas.getContext("2d").drawImage(img, 0, 0, nw, nh);
-
-    const blob = await new Promise((res) => canvas.toBlob(res, "image/jpeg", quality));
-    URL.revokeObjectURL(url);
-    return blob;
-  }
-
-  btnSave.addEventListener("click", async () => {
-    try{
-      const user = await requireAuth();
-      if (!user) { showBanner("err","Please sign in."); return; }
-
-      const container_code = containerCodeEl.value.trim();
-      if (!container_code) { showBanner("err","Container Code is required."); return; }
-
-      const photoFile = document.getElementById("photo").files?.[0];
-      const item_description = document.getElementById("desc").value.trim();
-      if (!photoFile && !item_description) {
-        showBanner("err","Add a photo, a description, or both.");
-        return;
-      }
-
-      const quantity = Number(document.getElementById("qty").value || 1);
-
-      setAuthStatus("Auth: OK (saving...)");
-
-      await ensureActiveContainer(container_code);
-
-      const { data: { session } } = await sb.auth.getSession();
-      if (!session?.user) throw new Error("Not logged in (session missing). Please sign in again.");
-
-      const item_id = crypto.randomUUID();
-      const ref_uid = item_id;
-      const path = photoFile ? `items/${ref_uid}/${item_id}.jpg` : null;
-
-      let { data: item, error: insErr } = await sb
-        .from("items")
-        .insert([{
-          item_id,
-          ref_uid,
-          container_code,
-          item_description,
-          quantity,
-          photo_path: path
-        }])
-        .select("item_id, ref_uid, container_code, item_description, quantity, photo_path, is_active")
-        .single();
-
-      if (insErr) throw insErr;
-
-      if (photoFile){
-        try {
-          const jpegBlob = await compressImageToJpeg(photoFile, 1024, 0.72);
-          const { error: upErr } = await sb.storage
-            .from("item-photos")
-            .upload(path, jpegBlob, { contentType: "image/jpeg", upsert: true });
-
-          if (upErr) throw upErr;
-        } catch (uploadErr) {
-          const { error: clearPathErr } = await sb
-            .from("items")
-            .update({ photo_path: null })
-            .eq("item_id", item.item_id);
-
-          if (clearPathErr) {
-            console.warn("Upload failed and photo_path could not be cleared:", clearPathErr);
-          }
-          throw uploadErr;
-        }
-      }
-
-      showBanner("ok", photoFile ? "Saved ✅" : "Saved without photo ✅");
-      setAuthStatus("Auth: OK");
-
-      document.getElementById("photo").value = "";
-      document.getElementById("desc").value = "";
-      document.getElementById("qty").value = "1";
-    }catch(e){
-      setAuthStatus("Auth: error (see banner)");
-      showBanner("err", "Save failed: " + (e.message || e));
-    }
-  });
-
-  // ------- Scanner (Quagga) -------
-  function openScan(){
-    scanModal.style.display = "flex";
-    const target = document.getElementById("scanner");
-    target.innerHTML = "";
-
-    Quagga.init({
-      inputStream: {
-        type: "LiveStream",
-        target: target,
-        constraints: {
-          facingMode: "environment",
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
-        },
-        area: { top:"20%", right:"10%", left:"10%", bottom:"20%" }
-      },
-      decoder: { readers: ["code_39_reader"] },
-      locate: true
-    }, (err) => {
-      if (err) {
-        showBanner("err", "Scanner init failed: " + (err.message || err));
-        closeScan();
-        return;
-      }
-      Quagga.start();
-    });
-
-    Quagga.offDetected();
-    Quagga.onDetected((res) => {
-      const raw = res?.codeResult?.code;
-      if (!raw) return;
-      const normalized = code39FullAsciiNormalize(raw);
-
-      containerCodeEl.value = normalized;
-      containerSetNote.textContent = `Container set: ${normalized}`;
-      showBanner("ok", `Scanned: ${normalized}`);
-      closeScan();
-    });
-  }
-
-  function closeScan(){
-    scanModal.style.display = "none";
-    try { Quagga.stop(); } catch(e) {}
-  }
-
+  const DB_NAME = "inventoryapp_offline_v1";
+  const DB_VERSION = 1;
+  const STORE_QUEUE = "capture_queue";
+  const STORE_INDEX = "search_index";
+  const STORE_META = "meta";
+  let cachedUser = null;
+  let ensuredContainer = null;
+  let syncInFlight = false;
+  function setAuthStatus(msg){ if (authStatusEl) authStatusEl.textContent = msg; }
+  function setSaveEnabled(enabled){ btnSave.disabled = !enabled; btnSave.style.opacity = enabled ? "1" : "0.6"; btnSave.style.pointerEvents = enabled ? "auto" : "none"; }
+  function showBanner(type, msg){ banner.className = "banner " + (type || "ok"); banner.textContent = msg; banner.style.display = "block"; setTimeout(() => banner.style.display = "none", 6500); }
+  window.addEventListener("error", (evt) => { const msg = evt?.message || "Unknown script error"; setAuthStatus("Auth: error (see banner)"); showBanner("err", "Script error: " + msg); });
+  window.addEventListener("unhandledrejection", (evt) => { const msg = evt?.reason?.message || String(evt?.reason || "Unknown promise rejection"); setAuthStatus("Auth: error (see banner)"); showBanner("err", "Unhandled: " + msg); });
+  function code39FullAsciiNormalize(raw){ if (!raw) return raw; let out = ""; for (let i=0; i<raw.length; i++){ const ch = raw[i]; if (ch === "+" && i+1 < raw.length){ const next = raw[i+1]; if (next >= "A" && next <= "Z"){ out += next.toLowerCase(); i++; continue; } } out += ch; } return out; }
+  function normalizeContainerCode(raw){ return String(raw || "").trim().replace(/\s+/g, "").toUpperCase(); }
+  function isConnectivityError(err){ const msg = String(err?.message || err || "").toLowerCase(); return !navigator.onLine || msg.includes("failed to fetch") || msg.includes("networkerror") || msg.includes("network request failed") || msg.includes("load failed") || msg.includes("timeout"); }
+  async function openDb(){ return await new Promise((resolve, reject) => { const req = indexedDB.open(DB_NAME, DB_VERSION); req.onupgradeneeded = () => { const db = req.result; if (!db.objectStoreNames.contains(STORE_QUEUE)) { const s = db.createObjectStore(STORE_QUEUE, { keyPath: "queue_id" }); s.createIndex("status", "status", { unique: false }); s.createIndex("created_at", "created_at", { unique: false }); } if (!db.objectStoreNames.contains(STORE_INDEX)) db.createObjectStore(STORE_INDEX, { keyPath: "ref_uid" }); if (!db.objectStoreNames.contains(STORE_META)) db.createObjectStore(STORE_META, { keyPath: "key" }); }; req.onsuccess = () => resolve(req.result); req.onerror = () => reject(req.error); }); }
+  async function idbPut(store, value){ const db = await openDb(); return await new Promise((resolve, reject) => { const tx = db.transaction(store, "readwrite"); tx.objectStore(store).put(value); tx.oncomplete = () => resolve(true); tx.onerror = () => reject(tx.error); }); }
+  async function idbDelete(store, key){ const db = await openDb(); return await new Promise((resolve, reject) => { const tx = db.transaction(store, "readwrite"); tx.objectStore(store).delete(key); tx.oncomplete = () => resolve(true); tx.onerror = () => reject(tx.error); }); }
+  async function idbGetAll(store){ const db = await openDb(); return await new Promise((resolve, reject) => { const tx = db.transaction(store, "readonly"); const req = tx.objectStore(store).getAll(); req.onsuccess = () => resolve(req.result || []); req.onerror = () => reject(req.error); }); }
+  async function idbGet(store, key){ const db = await openDb(); return await new Promise((resolve, reject) => { const tx = db.transaction(store, "readonly"); const req = tx.objectStore(store).get(key); req.onsuccess = () => resolve(req.result || null); req.onerror = () => reject(req.error); }); }
+  async function setMeta(key, value){ return idbPut(STORE_META, { key, value }); }
+  async function getMeta(key){ const row = await idbGet(STORE_META, key); return row?.value ?? null; }
+  async function fileToDataUrl(fileOrBlob){ return await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = () => reject(reader.error || new Error("File read failed")); reader.readAsDataURL(fileOrBlob); }); }
+  async function renderNavSafe(timeoutMs = 1200){ try{ if (!window.APP_NAV || typeof window.APP_NAV.render !== "function") return; await Promise.race([window.APP_NAV.render("navBar"), new Promise((res) => setTimeout(res, timeoutMs))]); }catch(e){ console.warn("Nav render failed:", e); } }
+  async function waitForSession(maxMs = 2500){ const start = Date.now(); while (Date.now() - start < maxMs){ const { data: { session } } = await sb.auth.getSession(); if (session?.user) return session; await new Promise(r => setTimeout(r, 150)); } return null; }
+  async function requireAuth(){ setSaveEnabled(false); setAuthStatus("Auth: checking..."); await renderNavSafe(1200); const session = await waitForSession(1500); if (session?.user){ cachedUser = session.user; setAuthStatus(`Auth: OK (${session.user.email || session.user.id})`); setSaveEnabled(true); return cachedUser; } const { data, error } = await sb.auth.getUser(); if (!error && data?.user){ cachedUser = data.user; setAuthStatus(`Auth: OK (${data.user.email || data.user.id})`); setSaveEnabled(true); return cachedUser; } cachedUser = null; setAuthStatus(navigator.onLine ? "Auth: NOT logged in. Please sign in." : "Auth: offline. New captures will queue locally."); setSaveEnabled(true); return null; }
+  async function updateOfflineStatus(){ const queued = await idbGetAll(STORE_QUEUE); const queuedCount = queued.length; const lastSync = await getMeta("last_sync_at"); const parts = [navigator.onLine ? "Online" : "Offline"]; if (queuedCount) parts.push(`${queuedCount} queued`); if (lastSync) parts.push(`Last sync: ${new Date(lastSync).toLocaleString()}`); offlineStatusEl.textContent = parts.join(" • "); }
+  async function init(){ await updateOfflineStatus(); const user = await requireAuth(); loginBox.style.display = user ? "none" : (navigator.onLine ? "block" : "none"); captureBox.style.display = "block"; if (navigator.onLine && user) syncOfflineQueue().catch(err => console.warn("Background sync failed", err)); }
+  btnLogin.addEventListener("click", async () => { try{ const email = document.getElementById("email").value.trim(); const password = document.getElementById("password").value; setAuthStatus("Auth: signing in..."); const { error } = await sb.auth.signInWithPassword({ email, password }); if (error) throw error; showBanner("ok", "Login successful ✅"); await init(); }catch(e){ setAuthStatus("Auth: NOT logged in. Please sign in."); showBanner("err", "Login failed: " + (e.message || e)); setSaveEnabled(true); } });
+  async function ensureActiveContainer(container_code){ const normalized = normalizeContainerCode(container_code); if (ensuredContainer?.container_code === normalized) return ensuredContainer; let { data: existing, error } = await sb.from("containers").select("container_id, ref_uid, container_code, is_active").eq("container_code", normalized).eq("is_active", true).maybeSingle(); if (error) throw error; if (existing) { ensuredContainer = existing; return existing; } let { data: created, error: insErr } = await sb.from("containers").insert([{ container_code: normalized }]).select("container_id, ref_uid, container_code, is_active").single(); if (insErr) { const msg = String(insErr?.message || insErr || "").toLowerCase(); if (msg.includes("duplicate") || msg.includes("unique")) { const retry = await sb.from("containers").select("container_id, ref_uid, container_code, is_active").eq("container_code", normalized).eq("is_active", true).single(); if (retry.error) throw retry.error; ensuredContainer = retry.data; return retry.data; } throw insErr; } if (!created.ref_uid){ const { data: upd, error: updErr } = await sb.from("containers").update({ ref_uid: created.container_id }).eq("container_id", created.container_id).select("container_id, ref_uid, container_code, is_active").single(); if (updErr) throw updErr; created = upd; } ensuredContainer = created; return created; }
+  async function compressImageToJpeg(file, maxDim=1280, quality=0.78){ const img = new Image(); const url = URL.createObjectURL(file); await new Promise((res, rej) => { img.onload=res; img.onerror=rej; img.src=url; }); const w = img.width, h = img.height; const scale = Math.min(1, maxDim / Math.max(w,h)); const nw = Math.round(w*scale); const nh = Math.round(h*scale); const canvas = document.createElement("canvas"); canvas.width = nw; canvas.height = nh; canvas.getContext("2d").drawImage(img, 0, 0, nw, nh); const blob = await new Promise((res) => canvas.toBlob(res, "image/jpeg", quality)); URL.revokeObjectURL(url); return blob; }
+  async function upsertSearchIndexItem(item){ await idbPut(STORE_INDEX, { ref_uid: item.ref_uid, item_id: item.item_id, container_code: item.container_code, item_description: item.item_description || "", created_by: item.created_by || "", created_at: item.created_at || new Date().toISOString(), photo_path: item.photo_path || null, is_active: item.is_active !== false, source: item.source || "live" }); }
+  async function queueOfflineItem(payload){ await idbPut(STORE_QUEUE, payload); await upsertSearchIndexItem({ ref_uid: payload.ref_uid, item_id: payload.item_id, container_code: payload.container_code, item_description: payload.item_description, created_by: payload.created_by, created_at: payload.created_at, photo_path: payload.photo_path, is_active: true, source: "queued" }); await updateOfflineStatus(); }
+  async function syncOfflineQueue(){ if (syncInFlight || !navigator.onLine) return; const user = cachedUser || await requireAuth(); if (!user) return; const queued = (await idbGetAll(STORE_QUEUE)).sort((a,b) => String(a.created_at).localeCompare(String(b.created_at))); if (!queued.length) { await updateOfflineStatus(); return; } syncInFlight = true; try { for (const entry of queued){ await ensureActiveContainer(entry.container_code); const { data: item, error: insErr } = await sb.from("items").insert([{ item_id: entry.item_id, ref_uid: entry.ref_uid, container_code: entry.container_code, item_description: entry.item_description, quantity: entry.quantity, photo_path: entry.photo_path, created_by: entry.created_by || user.id, created_at: entry.created_at }]).select("item_id, ref_uid, container_code, item_description, quantity, photo_path, is_active, created_at, created_by").single(); if (insErr) throw insErr; if (entry.photo_data_url){ const blob = await (await fetch(entry.photo_data_url)).blob(); const { error: upErr } = await sb.storage.from("item-photos").upload(entry.photo_path, blob, { contentType: "image/jpeg", upsert: true }); if (upErr) { await sb.from("items").update({ photo_path: null }).eq("item_id", item.item_id); throw upErr; } } await upsertSearchIndexItem({ ...item, source: "live" }); await idbDelete(STORE_QUEUE, entry.queue_id); } await setMeta("last_sync_at", new Date().toISOString()); await updateOfflineStatus(); showBanner("ok", "Queued items synced ✅"); } finally { syncInFlight = false; } }
+  async function saveOnline(payload, photoFile){ await ensureActiveContainer(payload.container_code); const { data: item, error: insErr } = await sb.from("items").insert([{ item_id: payload.item_id, ref_uid: payload.ref_uid, container_code: payload.container_code, item_description: payload.item_description, quantity: payload.quantity, photo_path: payload.photo_path }]).select("item_id, ref_uid, container_code, item_description, quantity, photo_path, is_active, created_at, created_by").single(); if (insErr) throw insErr; if (photoFile && payload.photo_path){ try { const jpegBlob = await compressImageToJpeg(photoFile, 1280, 0.78); const { error: upErr } = await sb.storage.from("item-photos").upload(payload.photo_path, jpegBlob, { contentType: "image/jpeg", upsert: true }); if (upErr) throw upErr; } catch (uploadErr) { await sb.from("items").update({ photo_path: null }).eq("item_id", item.item_id); throw uploadErr; } } await upsertSearchIndexItem({ ...item, source: "live" }); return item; }
+  function clearFormKeepContainer(){ photoEl.value = ""; descEl.value = ""; qtyEl.value = "1"; descEl.focus(); }
+  btnSave.addEventListener("click", async () => { try{ const container_code = normalizeContainerCode(containerCodeEl.value); containerCodeEl.value = container_code; containerSetNote.textContent = container_code ? `Container set: ${container_code}` : ""; if (!container_code) { showBanner("err","Container Code is required."); return; } const photoFile = photoEl.files?.[0] || null; const item_description = descEl.value.trim(); if (!photoFile && !item_description) { showBanner("err","Add a photo, a description, or both."); return; } const quantity = Number(qtyEl.value || 1); const item_id = crypto.randomUUID(); const ref_uid = item_id; const photo_path = photoFile ? `items/${ref_uid}/${item_id}.jpg` : null; const user = cachedUser || await requireAuth(); const payload = { queue_id: `q-${item_id}`, item_id, ref_uid, container_code, item_description, quantity, photo_path, created_at: new Date().toISOString(), created_by: user?.id || null, status: "queued" }; setAuthStatus(navigator.onLine && user ? "Auth: OK (saving...)" : "Auth: offline queueing..."); if (!navigator.onLine || !user) { const compressed = photoFile ? await compressImageToJpeg(photoFile, 1280, 0.78) : null; payload.photo_data_url = compressed ? await fileToDataUrl(compressed) : null; await queueOfflineItem(payload); showBanner("warn", `Offline saved locally. Will sync to ${container_code} when online.`); clearFormKeepContainer(); setAuthStatus(navigator.onLine ? "Auth: NOT logged in. Please sign in." : "Auth: offline. New captures will queue locally."); return; } const item = await saveOnline(payload, photoFile); showBanner("ok", `✓ Item saved to ${item.container_code}`); setAuthStatus(`Auth: OK (${user.email || user.id})`); clearFormKeepContainer(); await updateOfflineStatus(); }catch(e){ const rawContainer = normalizeContainerCode(containerCodeEl.value); const photoFile = photoEl.files?.[0] || null; const item_description = descEl.value.trim(); const quantity = Number(qtyEl.value || 1); if (rawContainer && (photoFile || item_description) && isConnectivityError(e)) { const item_id = crypto.randomUUID(); const ref_uid = item_id; const compressed = photoFile ? await compressImageToJpeg(photoFile, 1280, 0.78) : null; const payload = { queue_id: `q-${item_id}`, item_id, ref_uid, container_code: rawContainer, item_description, quantity, photo_path: compressed ? `items/${ref_uid}/${item_id}.jpg` : null, created_at: new Date().toISOString(), created_by: cachedUser?.id || null, status: "queued", photo_data_url: compressed ? await fileToDataUrl(compressed) : null }; await queueOfflineItem(payload); showBanner("warn", `Connection issue. Item queued locally for ${rawContainer}.`); clearFormKeepContainer(); } else { setAuthStatus("Auth: error (see banner)"); showBanner("err", "Save failed: " + (e.message || e)); } await updateOfflineStatus(); } });
+  containerCodeEl.addEventListener("blur", () => { const normalized = normalizeContainerCode(containerCodeEl.value); containerCodeEl.value = normalized; containerSetNote.textContent = normalized ? `Container set: ${normalized}` : ""; if (ensuredContainer?.container_code && ensuredContainer.container_code !== normalized) ensuredContainer = null; });
+  function openScan(){ scanModal.style.display = "flex"; const target = document.getElementById("scanner"); target.innerHTML = ""; Quagga.init({ inputStream: { type: "LiveStream", target: target, constraints: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } }, area: { top:"20%", right:"10%", left:"10%", bottom:"20%" } }, decoder: { readers: ["code_39_reader"] }, locate: true }, (err) => { if (err) { showBanner("err", "Scanner init failed: " + (err.message || err)); closeScan(); return; } Quagga.start(); }); Quagga.offDetected(); Quagga.onDetected((res) => { const raw = res?.codeResult?.code; if (!raw) return; const normalized = normalizeContainerCode(code39FullAsciiNormalize(raw)); containerCodeEl.value = normalized; containerSetNote.textContent = `Container set: ${normalized}`; ensuredContainer = null; showBanner("ok", `Scanned: ${normalized}`); closeScan(); }); }
+  function closeScan(){ scanModal.style.display = "none"; try { Quagga.stop(); } catch(e) {} }
+  window.addEventListener("online", async () => { await updateOfflineStatus(); await requireAuth(); syncOfflineQueue().catch(err => console.warn(err)); });
+  window.addEventListener("offline", () => { updateOfflineStatus().catch(console.warn); setAuthStatus("Auth: offline. New captures will queue locally."); });
   btnScanContainer.addEventListener("click", openScan);
   btnCloseScan.addEventListener("click", closeScan);
-
   init();
 })();
 </script>
