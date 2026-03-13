@@ -1,11 +1,16 @@
 <!--
-Update: Fix "Auth: checking..." hang on iOS by making navbar render non-blocking (APP_NAV.render can stall).
-Why: If APP_NAV.render never resolves, requireAuth never completes and login/capture UI never appears.
+Update: Make photo optional, require photo OR description, remove redirect on auto-created containers,
+        and use client-generated item UUID/path so inserts can include photo_path up front.
+Why: The previous save flow inserted items before photo upload and failed when photo_path was NOT NULL.
+     It also redirected to container detail when a new container was auto-created, interrupting item save.
 Changes:
-  1) Wrap APP_NAV.render in a safe timeout so auth checks proceed even if nav fails.
-  2) Add simple on-page error capture (shows banner + authStatus if JS throws).
-  3) Keep singleton Supabase client usage for consistent auth headers.
-Revision: 2026-01-09.v4
+  1) Require at least one of: photo or description.
+  2) Change capture UI copy to show photo is optional.
+  3) Remove redirect from ensureActiveContainer(); return the created/found container instead.
+  4) Generate item_id/ref_uid in-browser with crypto.randomUUID().
+  5) If a photo is provided, precompute photo_path and include it in the initial insert.
+  6) Upload the photo after insert; if upload fails, clear photo_path and surface the error.
+Revision: 2026-03-12.v5
 -->
 <!doctype html>
 <html>
@@ -53,8 +58,9 @@ Revision: 2026-01-09.v4
         </div>
         <div class="small-note" id="containerSetNote"></div>
 
-        <label>Photo (required)</label>
+        <label>Photo (optional)</label>
         <input id="photo" type="file" accept="image/*" capture="environment" />
+        <div class="small-note">Provide a photo, a description, or both. At least one is required.</div>
 
         <label>Description</label>
         <textarea id="desc" placeholder="Item description"></textarea>
@@ -267,8 +273,6 @@ Revision: 2026-01-09.v4
       created = upd;
     }
 
-    const returnUrl = encodeURIComponent("capture.html");
-    window.location.href = `container_detail.html?ref_uid=${encodeURIComponent(created.ref_uid)}&return=${returnUrl}`;
     return created;
   }
 
@@ -301,9 +305,12 @@ Revision: 2026-01-09.v4
       if (!container_code) { showBanner("err","Container Code is required."); return; }
 
       const photoFile = document.getElementById("photo").files?.[0];
-      if (!photoFile) { showBanner("err","Photo is required."); return; }
-
       const item_description = document.getElementById("desc").value.trim();
+      if (!photoFile && !item_description) {
+        showBanner("err","Add a photo, a description, or both.");
+        return;
+      }
+
       const quantity = Number(document.getElementById("qty").value || 1);
 
       setAuthStatus("Auth: OK (saving...)");
@@ -313,42 +320,47 @@ Revision: 2026-01-09.v4
       const { data: { session } } = await sb.auth.getSession();
       if (!session?.user) throw new Error("Not logged in (session missing). Please sign in again.");
 
+      const item_id = crypto.randomUUID();
+      const ref_uid = item_id;
+      const path = photoFile ? `items/${ref_uid}/${item_id}.jpg` : null;
+
       let { data: item, error: insErr } = await sb
         .from("items")
-        .insert([{ container_code, item_description, quantity }])
-        .select("item_id, ref_uid, container_code, item_description, quantity, is_active")
+        .insert([{
+          item_id,
+          ref_uid,
+          container_code,
+          item_description,
+          quantity,
+          photo_path: path
+        }])
+        .select("item_id, ref_uid, container_code, item_description, quantity, photo_path, is_active")
         .single();
 
       if (insErr) throw insErr;
 
-      if (!item.ref_uid){
-        const { data: updItem, error: updErr } = await sb
-          .from("items")
-          .update({ ref_uid: item.item_id })
-          .eq("item_id", item.item_id)
-          .select("item_id, ref_uid, container_code, item_description, quantity, is_active")
-          .single();
-        if (updErr) throw updErr;
-        item = updItem;
+      if (photoFile){
+        try {
+          const jpegBlob = await compressImageToJpeg(photoFile, 1024, 0.72);
+          const { error: upErr } = await sb.storage
+            .from("item-photos")
+            .upload(path, jpegBlob, { contentType: "image/jpeg", upsert: true });
+
+          if (upErr) throw upErr;
+        } catch (uploadErr) {
+          const { error: clearPathErr } = await sb
+            .from("items")
+            .update({ photo_path: null })
+            .eq("item_id", item.item_id);
+
+          if (clearPathErr) {
+            console.warn("Upload failed and photo_path could not be cleared:", clearPathErr);
+          }
+          throw uploadErr;
+        }
       }
 
-      const jpegBlob = await compressImageToJpeg(photoFile, 1024, 0.72);
-      const path = `items/${item.ref_uid}/${item.item_id}.jpg`;
-
-      const { error: upErr } = await sb.storage
-        .from("item-photos")
-        .upload(path, jpegBlob, { contentType: "image/jpeg", upsert: true });
-
-      if (upErr) throw upErr;
-
-      const { error: savePathErr } = await sb
-        .from("items")
-        .update({ photo_path: path })
-        .eq("item_id", item.item_id);
-
-      if (savePathErr) throw savePathErr;
-
-      showBanner("ok", "Saved ✅");
+      showBanner("ok", photoFile ? "Saved ✅" : "Saved without photo ✅");
       setAuthStatus("Auth: OK");
 
       document.getElementById("photo").value = "";
