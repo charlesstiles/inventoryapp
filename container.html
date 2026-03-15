@@ -22,8 +22,11 @@
 
       <div class="hr"></div>
 
-      <button class="btn disabled" id="btnShow" disabled>Show Contents</button>
-      <div class="small-note">Button enabled when a container code is entered.</div>
+      <div class="row">
+        <button class="btn disabled" id="btnShow" disabled style="max-width:220px;">Show Contents</button>
+        <button class="btn secondary" id="btnDetail" style="max-width:220px;">Open Container Detail</button>
+      </div>
+      <div class="small-note">Show contents for a container, then use the green action buttons to edit items.</div>
 
       <div class="hr"></div>
 
@@ -35,6 +38,7 @@
             <th>Qty</th>
             <th>User</th>
             <th>Created</th>
+            <th class="no-print"></th>
           </tr>
         </thead>
         <tbody id="tbody"></tbody>
@@ -44,14 +48,47 @@
     </div>
   </div>
 
+  <div class="confirm-overlay" id="confirmOverlay">
+    <div class="confirm-box">
+      <h3 id="confirmTitle">Confirm</h3>
+      <p id="confirmMessage"></p>
+      <div class="confirm-actions">
+        <button id="confirmCancel" class="btn secondary" style="max-width:120px;">Cancel</button>
+        <button id="confirmProceed" class="btn" style="max-width:120px;background:linear-gradient(180deg,#dc2626,#b91c1c);">Delete</button>
+      </div>
+    </div>
+  </div>
+
 <script>
 (function(){
   const banner = document.getElementById("banner");
   const containerCodeEl = document.getElementById("containerCode");
   const btnShow = document.getElementById("btnShow");
+  const btnDetail = document.getElementById("btnDetail");
   const tbl = document.getElementById("tbl");
   const tbody = document.getElementById("tbody");
   const note = document.getElementById("note");
+  const confirmOverlay = document.getElementById("confirmOverlay");
+  const confirmTitle = document.getElementById("confirmTitle");
+  const confirmMessage = document.getElementById("confirmMessage");
+  const confirmCancel = document.getElementById("confirmCancel");
+  const confirmProceed = document.getElementById("confirmProceed");
+  let confirmResolve = null;
+
+  confirmCancel.onclick = () => {
+    confirmOverlay.style.display = "none";
+    if (confirmResolve) confirmResolve(false);
+  };
+  confirmProceed.onclick = () => {
+    confirmOverlay.style.display = "none";
+    if (confirmResolve) confirmResolve(true);
+  };
+  function askConfirm(title, msg){
+    confirmTitle.textContent = title;
+    confirmMessage.textContent = msg;
+    confirmOverlay.style.display = "flex";
+    return new Promise(r => confirmResolve = r);
+  }
 
   function showBanner(type, msg){
     banner.className = "banner " + (type || "ok");
@@ -65,7 +102,7 @@
     const sb = getSupabase();
     const { data } = await sb.auth.getUser();
     if (!data.user){
-      window.location.href = "capture.html";
+      window.location.href = "index.html";
       return null;
     }
     return data.user;
@@ -80,6 +117,12 @@
 
   containerCodeEl.addEventListener("input", updateButtonState);
 
+  btnDetail.addEventListener("click", () => {
+    const code = containerCodeEl.value.trim();
+    if (!code) return;
+    window.location.href = `container_detail.html?container_code=${encodeURIComponent(code)}`;
+  });
+
   async function signedThumb(path){
     if (!path) return null;
     const sb = getSupabase();
@@ -89,6 +132,16 @@
   }
 
   function esc(s){ return (s||"").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+
+  async function deleteItem(item){
+    const ok = await askConfirm("Delete item?", (item.item_description || "(no description)") + " from " + item.container_code);
+    if (!ok) return;
+    const sb = getSupabase();
+    const { error } = await sb.from("items").update({ is_active:false }).eq("ref_uid", item.ref_uid);
+    if (error) throw error;
+    showBanner("ok", "Item deleted.");
+    btnShow.click();
+  }
 
   btnShow.addEventListener("click", async () => {
     const user = await requireAuth();
@@ -105,7 +158,7 @@
       const sb = getSupabase();
       const { data: items, error } = await sb
         .from("items")
-        .select("ref_uid, item_description, quantity, created_by, created_at, photo_path")
+        .select("ref_uid, item_description, quantity, created_by, created_at, photo_path, container_code")
         .eq("is_active", true)
         .eq("container_code", code)
         .order("created_at", { ascending:false })
@@ -123,11 +176,6 @@
 
       for (const it of items){
         const tr = document.createElement("tr");
-        tr.style.cursor = "pointer";
-        tr.addEventListener("click", () => {
-          window.location.href = `item_detail.html?ref_uid=${encodeURIComponent(it.ref_uid)}`;
-        });
-
         const thumbUrl = await signedThumb(it.photo_path);
         tr.innerHTML = `
           <td>${thumbUrl ? `<img class="thumb" src="${thumbUrl}" />` : ""}</td>
@@ -135,8 +183,18 @@
           <td class="mono">${esc(String(it.quantity ?? 1))}</td>
           <td class="mono">${esc(it.created_by || "")}</td>
           <td class="mono">${esc(new Date(it.created_at).toLocaleString())}</td>
+          <td class="no-print">
+            <div class="action-stack">
+              <a class="icon-circle icon-edit" href="item_detail.html?ref_uid=${encodeURIComponent(it.ref_uid)}" title="Edit item">✎</a>
+              <button class="icon-circle icon-delete" data-del-item="${esc(it.ref_uid)}" title="Delete item">✕</button>
+            </div>
+          </td>
         `;
         tbody.appendChild(tr);
+
+        tr.querySelector('[data-del-item="' + it.ref_uid + '"]').addEventListener("click", () => {
+          deleteItem(it).catch(e => showBanner("err", "Delete failed: " + (e.message || e)));
+        });
       }
 
     }catch(e){
