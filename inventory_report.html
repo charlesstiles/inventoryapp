@@ -4,279 +4,25 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Inventory Report</title>
-
+<link rel="stylesheet" href="styles.css" />
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="config.js"></script>
 <script src="navigation.js"></script>
-
-<style>
-body{
-  font-family:system-ui;
-  background:#eef2f7;
-  color:#17212b;
-  margin:0;
-  padding:20px;
-}
-.page{
-  max-width:1100px;
-  margin:auto;
-}
-#navBar{
-  margin-bottom:14px;
-}
-.card{
-  background:linear-gradient(135deg,#16243c,#1f2f4f);
-  border-radius:16px;
-  padding:24px;
-  box-shadow:0 6px 20px rgba(0,0,0,.25);
-  color:#ffffff;
-}
-.card h1{
-  color:#ffffff;
-  font-weight:700;
-  letter-spacing:.3px;
-  margin-top:0;
-}
-label{
-  font-weight:600;
-  color:#dce6f2;
-}
-input,select{
-  padding:10px 12px;
-  border-radius:8px;
-  border:1px solid #4b5d7a;
-  background:#0f1a2d;
-  color:#ffffff;
-}
-.report-toolbar{
-  display:flex;
-  gap:14px;
-  flex-wrap:wrap;
-  margin-bottom:18px;
-  background:rgba(255,255,255,0.06);
-  padding:16px;
-  border-radius:12px;
-  border:1px solid rgba(255,255,255,0.12);
-}
-.report-toolbar .spacer{
-  flex:1;
-}
-button{
-  padding:10px 14px;
-  border-radius:8px;
-  border:1px solid #6b86b4;
-  background:#1c2b48;
-  color:#ffffff;
-  cursor:pointer;
-}
-button:hover{
-  background:#23365b;
-}
-.secondary-btn{
-  border:1px solid #94a3b8;
-  background:#f1f5f9;
-  color:#17212b;
-}
-.secondary-btn:hover{
-  background:#e2e8f0;
-}
-.summary{
-  color:#dce6f2;
-  font-weight:600;
-  margin:8px 0 16px 0;
-}
-.container-group{
-  background:#ffffff;
-  border-radius:12px;
-  margin-top:20px;
-  overflow:hidden;
-  transition:transform .08s ease, box-shadow .08s ease;
-}
-.container-group:hover{
-  transform:translateY(-2px);
-  box-shadow:0 6px 14px rgba(0,0,0,.08);
-}
-.container-head{
-  display:flex;
-  justify-content:space-between;
-  align-items:center;
-  gap:14px;
-  padding:14px 18px;
-  background:#e6edf6;
-  border-bottom:1px solid #cfd9e6;
-}
-.container-head-left{
-  display:flex;
-  align-items:center;
-  gap:12px;
-  min-width:0;
-}
-.collapse-btn{
-  min-width:42px;
-  width:42px;
-  height:42px;
-  padding:0;
-  font-size:18px;
-  font-weight:800;
-  border-radius:10px;
-  border:1px solid #94a3b8;
-  background:#f8fafc;
-  color:#17212b;
-}
-.collapse-btn:hover{
-  background:#e2e8f0;
-}
-.container-title{
-  font-size:20px;
-  font-weight:800;
-  color:#111827;
-}
-.container-meta{
-  font-size:13px;
-  color:#334155;
-  font-weight:600;
-}
-.icon-row{
-  display:flex;
-  gap:8px;
-  align-items:center;
-}
-.icon-btn{
-  padding:6px 10px;
-  border-radius:8px;
-  border:1px solid #94a3b8;
-  background:#f1f5f9;
-  cursor:pointer;
-  color:#17212b;
-  text-decoration:none;
-  display:inline-block;
-}
-.icon-btn:hover{
-  background:#e2e8f0;
-}
-.danger-btn{
-  border-color:#e2a8af;
-  color:#8a1320;
-  background:#fff5f5;
-}
-.danger-btn:hover{
-  background:#ffe5e5;
-}
-table{
-  width:100%;
-  border-collapse:collapse;
-}
-th{
-  text-align:left;
-  padding:12px;
-  background:#f1f5f9;
-  color:#111827;
-}
-td{
-  padding:12px;
-  border-top:1px solid #e2e8f0;
-  color:#111827;
-}
-.item-desc{
-  color:#111827;
-  font-weight:600;
-}
-.thumb{
-  width:48px;
-  height:48px;
-  object-fit:cover;
-  border-radius:8px;
-}
-.hidden{
-  display:none;
-}
-.empty-note{
-  padding:16px 18px;
-  color:#334155;
-  background:#ffffff;
-}
-.confirm-overlay{
-  position:fixed;
-  inset:0;
-  background:rgba(0,0,0,.5);
-  display:none;
-  align-items:center;
-  justify-content:center;
-  z-index:9999;
-}
-.confirm-box{
-  background:#ffffff;
-  padding:20px;
-  border-radius:12px;
-  width:min(380px,92vw);
-  box-shadow:0 10px 28px rgba(0,0,0,.24);
-}
-.confirm-box h3{
-  margin-top:0;
-  color:#111827;
-}
-.confirm-box p{
-  color:#334155;
-}
-.confirm-actions{
-  margin-top:18px;
-  display:flex;
-  justify-content:flex-end;
-  gap:10px;
-}
-.small-note{
-  color:#dce6f2;
-  font-size:13px;
-}
-@media print{
-  #navBar,
-  .report-toolbar,
-  .confirm-overlay,
-  .no-print{
-    display:none !important;
-  }
-  body{
-    background:#ffffff;
-    padding:0;
-  }
-  .card{
-    background:#ffffff;
-    color:#111827;
-    box-shadow:none;
-    padding:0;
-  }
-  .card h1,
-  .summary{
-    color:#111827;
-  }
-  .container-group{
-    break-inside:avoid;
-    box-shadow:none;
-    transform:none !important;
-  }
-  .container-content{
-    display:block !important;
-  }
-}
-</style>
 </head>
-
 <body>
-
 <div class="page">
   <div id="navBar"></div>
-
   <div class="card">
     <h1>Inventory Report</h1>
 
-    <div class="report-toolbar no-print">
+    <div class="toolbar-panel no-print">
       <div>
-        <label>Filter</label><br>
+        <label>Filter</label>
         <input id="q" placeholder="container code or item description">
       </div>
 
       <div>
-        <label>Sort Containers</label><br>
+        <label>Sort Containers</label>
         <select id="sortBy">
           <option value="code">Container Code</option>
           <option value="recent">Most Recent Item</option>
@@ -284,7 +30,7 @@ td{
       </div>
 
       <div>
-        <label>Show</label><br>
+        <label>Show</label>
         <select id="thumbMode">
           <option value="thumb">Thumbnails</option>
           <option value="none">No Thumbnails</option>
@@ -294,27 +40,24 @@ td{
       <div class="spacer"></div>
 
       <div>
-        <label>&nbsp;</label><br>
-        <button id="btnExpandAll" class="secondary-btn">Expand All</button>
+        <label>&nbsp;</label>
+        <button id="btnExpandAll" class="btn secondary" style="max-width:140px;">Expand All</button>
       </div>
-
       <div>
-        <label>&nbsp;</label><br>
-        <button id="btnCollapseAll" class="secondary-btn">Collapse All</button>
+        <label>&nbsp;</label>
+        <button id="btnCollapseAll" class="btn secondary" style="max-width:140px;">Collapse All</button>
       </div>
-
       <div>
-        <label>&nbsp;</label><br>
-        <button id="btnRefresh">Refresh</button>
+        <label>&nbsp;</label>
+        <button id="btnRefresh" class="btn secondary" style="max-width:120px;">Refresh</button>
       </div>
-
       <div>
-        <label>&nbsp;</label><br>
-        <button id="btnPrint">Print</button>
+        <label>&nbsp;</label>
+        <button id="btnPrint" class="btn secondary" style="max-width:120px;">Print</button>
       </div>
     </div>
 
-    <div id="summary" class="summary"></div>
+    <div id="summary" class="small-note" style="margin:12px 0 4px;"></div>
     <div id="reportRoot"></div>
   </div>
 </div>
@@ -324,32 +67,28 @@ td{
     <h3 id="confirmTitle">Confirm</h3>
     <p id="confirmMessage"></p>
     <div class="confirm-actions">
-      <button id="confirmCancel" class="secondary-btn">Cancel</button>
-      <button id="confirmProceed" class="danger-btn">Delete</button>
+      <button id="confirmCancel" class="btn secondary" style="max-width:120px;">Cancel</button>
+      <button id="confirmProceed" class="btn" style="max-width:120px;background:linear-gradient(180deg,#dc2626,#b91c1c);">Delete</button>
     </div>
   </div>
 </div>
 
 <script>
 const sb = getSupabase();
-
 const qEl = document.getElementById("q");
 const sortByEl = document.getElementById("sortBy");
 const thumbModeEl = document.getElementById("thumbMode");
 const reportRoot = document.getElementById("reportRoot");
 const summary = document.getElementById("summary");
-
 const btnExpandAll = document.getElementById("btnExpandAll");
 const btnCollapseAll = document.getElementById("btnCollapseAll");
 const btnRefresh = document.getElementById("btnRefresh");
 const btnPrint = document.getElementById("btnPrint");
-
 const confirmOverlay = document.getElementById("confirmOverlay");
 const confirmTitle = document.getElementById("confirmTitle");
 const confirmMessage = document.getElementById("confirmMessage");
 const confirmCancel = document.getElementById("confirmCancel");
 const confirmProceed = document.getElementById("confirmProceed");
-
 let confirmResolve = null;
 let state = { containers: [], byContainer: {} };
 const expandedState = {};
@@ -358,66 +97,47 @@ confirmCancel.onclick = () => {
   confirmOverlay.style.display = "none";
   if (confirmResolve) confirmResolve(false);
 };
-
 confirmProceed.onclick = () => {
   confirmOverlay.style.display = "none";
   if (confirmResolve) confirmResolve(true);
 };
-
 function askConfirm(title, msg){
   confirmTitle.textContent = title;
   confirmMessage.textContent = msg;
   confirmOverlay.style.display = "flex";
   return new Promise(r => confirmResolve = r);
 }
-
 function esc(s){
   return String(s || "").replace(/[&<>"']/g, m => ({
-    "&":"&amp;",
-    "<":"&lt;",
-    ">":"&gt;",
-    '"':"&quot;",
-    "'":"&#39;"
+    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
   }[m]));
 }
-
 async function requireAuth(){
-  if (window.APP_NAV && APP_NAV.render){
-    await APP_NAV.render("navBar");
-  }
+  await APP_NAV.render("navBar");
   const { data } = await sb.auth.getUser();
-  if (!data?.user){
-    window.location.href = "index.html";
-    return null;
-  }
+  if (!data?.user){ window.location.href = "index.html"; return null; }
   return data.user;
 }
-
 async function signedThumb(path){
   if (!path) return null;
   const { data, error } = await sb.storage.from("item-photos").createSignedUrl(path, 1800);
   if (error) return null;
   return data?.signedUrl || null;
 }
-
 async function loadData(){
   const [{ data: containers, error: cErr }, { data: items, error: iErr }] = await Promise.all([
     sb.from("containers").select("*").eq("is_active", true).order("container_code"),
     sb.from("items").select("*").eq("is_active", true).order("created_at", { ascending: false })
   ]);
-
   if (cErr) throw cErr;
   if (iErr) throw iErr;
-
   const byContainer = {};
   (items || []).forEach(i => {
     if (!byContainer[i.container_code]) byContainer[i.container_code] = [];
     byContainer[i.container_code].push(i);
   });
-
   state = { containers: containers || [], byContainer };
 }
-
 function toggleContainer(code){
   expandedState[code] = !expandedState[code];
   const content = document.querySelector('[data-content="' + code + '"]');
@@ -426,9 +146,7 @@ function toggleContainer(code){
   const isOpen = !!expandedState[code];
   content.classList.toggle("hidden", !isOpen);
   btn.textContent = isOpen ? "−" : "+";
-  btn.setAttribute("aria-label", isOpen ? "Collapse container" : "Expand container");
 }
-
 function setAllContainers(expanded){
   state.containers.forEach(c => { expandedState[c.container_code] = expanded; });
   document.querySelectorAll("[data-content]").forEach(el => {
@@ -436,10 +154,8 @@ function setAllContainers(expanded){
   });
   document.querySelectorAll("[data-toggle]").forEach(btn => {
     btn.textContent = expanded ? "−" : "+";
-    btn.setAttribute("aria-label", expanded ? "Collapse container" : "Expand container");
   });
 }
-
 async function deleteItem(item){
   const ok = await askConfirm("Delete item?", (item.item_description || "(no description)") + " from " + item.container_code);
   if (!ok) return;
@@ -447,7 +163,6 @@ async function deleteItem(item){
   if (error) throw error;
   await render();
 }
-
 async function deleteContainer(container, items){
   if (items.length){
     await askConfirm("Container not empty", "Container " + container.container_code + " still has " + items.length + " active item(s). Delete the items first.");
@@ -459,20 +174,16 @@ async function deleteContainer(container, items){
   if (error) throw error;
   await render();
 }
-
 function matchesFilter(containerCode, itemDescription, q){
   const s = q.trim().toLowerCase();
   if (!s) return true;
   return String(containerCode || "").toLowerCase().includes(s) || String(itemDescription || "").toLowerCase().includes(s);
 }
-
 async function render(){
   await loadData();
-
   const q = qEl.value.trim().toLowerCase();
   const thumbMode = thumbModeEl.value;
   const sortBy = sortByEl.value;
-
   let containers = [...state.containers];
 
   containers = containers.filter(container => {
@@ -498,36 +209,30 @@ async function render(){
     const allItems = state.byContainer[container.container_code] || [];
     const items = allItems.filter(item => matchesFilter(item.container_code, item.item_description, q));
     itemCount += items.length;
-
-    if (!(container.container_code in expandedState)){
-      expandedState[container.container_code] = false;
-    }
+    if (!(container.container_code in expandedState)) expandedState[container.container_code] = false;
 
     const group = document.createElement("div");
     group.className = "container-group";
 
     const head = document.createElement("div");
     head.className = "container-head";
-
     head.innerHTML = `
       <div class="container-head-left">
-        <button class="collapse-btn no-print" data-toggle="${esc(container.container_code)}" aria-label="${expandedState[container.container_code] ? "Collapse container" : "Expand container"}">
-          ${expandedState[container.container_code] ? "−" : "+"}
-        </button>
+        <button class="collapse-btn no-print" data-toggle="${esc(container.container_code)}">${expandedState[container.container_code] ? "−" : "+"}</button>
         <div>
           <div class="container-title">${esc(container.container_code)}</div>
           <div class="container-meta">${items.length} active item(s)</div>
         </div>
       </div>
-      <div class="icon-row no-print">
-        <a class="icon-btn" href="container_detail.html?container_code=${encodeURIComponent(container.container_code)}" title="Container Detail">📦</a>
-        <button class="icon-btn danger-btn" data-del-container="${esc(container.container_code)}" title="Delete Container">🗑</button>
+      <div class="action-stack no-print">
+        <a class="icon-circle icon-edit" href="container_detail.html?container_code=${encodeURIComponent(container.container_code)}" title="Edit container">✎</a>
+        <button class="icon-circle icon-delete" data-del-container="${esc(container.container_code)}" title="Delete container">✕</button>
       </div>
     `;
     group.appendChild(head);
 
     const content = document.createElement("div");
-    content.className = "container-content" + (expandedState[container.container_code] ? "" : " hidden");
+    content.className = expandedState[container.container_code] ? "" : "hidden";
     content.setAttribute("data-content", container.container_code);
 
     if (items.length === 0){
@@ -537,6 +242,7 @@ async function render(){
       content.appendChild(empty);
     } else {
       const table = document.createElement("table");
+      table.className = "report-table";
       table.innerHTML = `
         <thead>
           <tr>
@@ -549,22 +255,20 @@ async function render(){
         </thead>
         <tbody></tbody>
       `;
-
       const tbody = table.querySelector("tbody");
 
       for (const item of items){
         const tr = document.createElement("tr");
         const thumb = thumbMode === "thumb" ? await signedThumb(item.photo_path) : null;
-
         tr.innerHTML = `
           <td>${thumbMode === "thumb" ? (thumb ? `<img class="thumb" src="${thumb}">` : "") : ""}</td>
           <td class="item-desc">${esc(item.item_description || "(no description)")}</td>
           <td>${esc(item.quantity || "")}</td>
           <td>${item.created_at ? new Date(item.created_at).toLocaleString() : ""}</td>
           <td class="no-print">
-            <div class="icon-row">
-              <a class="icon-btn" href="item_detail.html?ref_uid=${encodeURIComponent(item.ref_uid)}" title="Item Detail">🔎</a>
-              <button class="icon-btn danger-btn" data-del-item="${esc(item.item_id)}" title="Delete Item">🗑</button>
+            <div class="action-stack">
+              <a class="icon-circle icon-edit" href="item_detail.html?ref_uid=${encodeURIComponent(item.ref_uid)}" title="Edit item">✎</a>
+              <button class="icon-circle icon-delete" data-del-item="${esc(item.item_id)}" title="Delete item">✕</button>
             </div>
           </td>
         `;
@@ -574,7 +278,6 @@ async function render(){
           deleteItem(item).catch(err => alert(err.message || err));
         });
       }
-
       content.appendChild(table);
     }
 
@@ -584,7 +287,6 @@ async function render(){
     head.querySelector('[data-toggle="' + container.container_code + '"]').addEventListener("click", () => {
       toggleContainer(container.container_code);
     });
-
     head.querySelector('[data-del-container="' + container.container_code + '"]').addEventListener("click", () => {
       deleteContainer(container, allItems).catch(err => alert(err.message || err));
     });
@@ -592,7 +294,6 @@ async function render(){
 
   summary.textContent = containers.length + " container(s), " + itemCount + " item(s).";
 }
-
 qEl.addEventListener("input", () => render().catch(err => alert(err.message || err)));
 sortByEl.addEventListener("change", () => render().catch(err => alert(err.message || err)));
 thumbModeEl.addEventListener("change", () => render().catch(err => alert(err.message || err)));
@@ -600,11 +301,7 @@ btnExpandAll.addEventListener("click", () => setAllContainers(true));
 btnCollapseAll.addEventListener("click", () => setAllContainers(false));
 btnRefresh.addEventListener("click", () => render().catch(err => alert(err.message || err)));
 btnPrint.addEventListener("click", () => window.print());
-
-requireAuth().then(user => {
-  if (user) render().catch(err => alert(err.message || err));
-});
+requireAuth().then(user => { if (user) render().catch(err => alert(err.message || err)); });
 </script>
-
 </body>
 </html>
