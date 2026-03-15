@@ -8,6 +8,48 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js"></script>
   <script src="navigation.js"></script>
+  <style>
+    .detail-meta{
+      display:grid;
+      grid-template-columns:repeat(auto-fit,minmax(240px,1fr));
+      gap:10px;
+      margin-bottom:12px;
+    }
+    .meta-chip{
+      background:rgba(255,255,255,.04);
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:14px;
+      padding:10px 12px;
+    }
+    .detail-layout{
+      display:grid;
+      grid-template-columns:180px 1fr;
+      gap:18px;
+      align-items:start;
+    }
+    .photo-box{
+      background:rgba(255,255,255,.04);
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:16px;
+      padding:12px;
+      min-height:180px;
+    }
+    .photo-box img{
+      width:100%;
+      aspect-ratio:1/1;
+      object-fit:cover;
+      border-radius:14px;
+      border:1px solid rgba(255,255,255,.12);
+    }
+    .related-table td:last-child, .related-table th:last-child{
+      width:96px;
+      text-align:center;
+    }
+    @media (max-width:760px){
+      .detail-layout{grid-template-columns:1fr}
+      .photo-box{max-width:220px}
+    }
+  </style>
 </head>
 <body>
   <div class="page">
@@ -17,16 +59,17 @@
     <div class="card">
       <h1>Container Detail</h1>
 
-      <div id="meta" class="small-note"></div>
+      <div id="meta" class="detail-meta"></div>
 
-      <div class="row" style="align-items:flex-start;">
-        <div style="flex:1;">
+      <div class="detail-layout">
+        <div>
           <label>Photo</label>
-          <div id="photoWrap"></div>
+          <div id="photoWrap" class="photo-box"></div>
           <input id="photoFile" type="file" accept="image/*" capture="environment" style="display:none;" />
-          <div class="small-note">Click photo to replace (when editing).</div>
+          <div class="small-note">Click the photo to replace it while editing.</div>
         </div>
-        <div style="flex:2;">
+
+        <div>
           <label>Container Code</label>
           <input id="code" type="text" disabled />
 
@@ -43,13 +86,14 @@
 
       <div class="row">
         <button class="btn secondary" id="btnEdit" style="max-width:180px;">Edit</button>
-        <button class="btn disabled" id="btnSave" disabled>Save</button>
+        <button class="btn disabled" id="btnSave" disabled style="max-width:220px;">Save</button>
+        <button class="btn secondary" id="btnReturn" style="display:none;max-width:220px;">Return</button>
       </div>
 
       <div class="hr"></div>
 
       <h2>Items in Container</h2>
-      <table class="table" id="tbl" style="display:none;">
+      <table class="table related-table" id="tbl" style="display:none;">
         <thead>
           <tr>
             <th></th>
@@ -58,14 +102,23 @@
             <th>User</th>
             <th>Location</th>
             <th>Created</th>
+            <th class="no-print"></th>
           </tr>
         </thead>
         <tbody id="tbody"></tbody>
       </table>
       <div class="small-note" id="note"></div>
+    </div>
+  </div>
 
-      <div class="hr"></div>
-      <button class="btn secondary" id="btnReturn" style="display:none;">Return to Capture</button>
+  <div class="confirm-overlay" id="confirmOverlay">
+    <div class="confirm-box">
+      <h3 id="confirmTitle">Confirm</h3>
+      <p id="confirmMessage"></p>
+      <div class="confirm-actions">
+        <button id="confirmCancel" class="btn secondary" style="max-width:120px;">Cancel</button>
+        <button id="confirmProceed" class="btn" style="max-width:120px;background:linear-gradient(180deg,#dc2626,#b91c1c);">Delete</button>
+      </div>
     </div>
   </div>
 
@@ -84,6 +137,27 @@
   const tbody = document.getElementById("tbody");
   const note = document.getElementById("note");
   const btnReturn = document.getElementById("btnReturn");
+  const confirmOverlay = document.getElementById("confirmOverlay");
+  const confirmTitle = document.getElementById("confirmTitle");
+  const confirmMessage = document.getElementById("confirmMessage");
+  const confirmCancel = document.getElementById("confirmCancel");
+  const confirmProceed = document.getElementById("confirmProceed");
+  let confirmResolve = null;
+
+  confirmCancel.onclick = () => {
+    confirmOverlay.style.display = "none";
+    if (confirmResolve) confirmResolve(false);
+  };
+  confirmProceed.onclick = () => {
+    confirmOverlay.style.display = "none";
+    if (confirmResolve) confirmResolve(true);
+  };
+  function askConfirm(title, msg){
+    confirmTitle.textContent = title;
+    confirmMessage.textContent = msg;
+    confirmOverlay.style.display = "flex";
+    return new Promise(r => confirmResolve = r);
+  }
 
   function showBanner(type, msg){
     banner.className = "banner " + (type || "ok");
@@ -91,44 +165,36 @@
     banner.style.display = "block";
     setTimeout(() => banner.style.display = "none", 4500);
   }
-
-  function esc(s){ return (s||"").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
-
+  function esc(s){ return String(s||"").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
   async function requireAuth(){
     await window.APP_NAV.render("navBar");
     const sb = getSupabase();
     const { data } = await sb.auth.getUser();
     if (!data.user){
-      window.location.href = "capture.html";
+      window.location.href = "index.html";
       return null;
     }
     return data.user;
   }
-
   function getParam(name){
     const u = new URL(window.location.href);
     return u.searchParams.get(name);
   }
-
   async function compressImageToJpeg(file, maxDim=1024, quality=0.72){
     const img = new Image();
     const url = URL.createObjectURL(file);
     await new Promise((res, rej) => { img.onload=res; img.onerror=rej; img.src=url; });
-
     const w = img.width, h = img.height;
     const scale = Math.min(1, maxDim / Math.max(w,h));
     const nw = Math.round(w*scale);
     const nh = Math.round(h*scale);
-
     const canvas = document.createElement("canvas");
     canvas.width = nw; canvas.height = nh;
     canvas.getContext("2d").drawImage(img, 0, 0, nw, nh);
-
     const blob = await new Promise((res) => canvas.toBlob(res, "image/jpeg", quality));
     URL.revokeObjectURL(url);
     return blob;
   }
-
   async function signedUrl(bucket, path){
     if (!path) return null;
     const sb = getSupabase();
@@ -146,11 +212,10 @@
   const returnParam = getParam("return");
 
   if (returnParam){
-    btnReturn.style.display = "block";
+    btnReturn.style.display = "inline-flex";
     btnReturn.addEventListener("click", () => window.location.href = decodeURIComponent(returnParam));
   }
 
-  // Load container by ref_uid or by code
   let container = null;
   if (ref_uid){
     const { data, error } = await sb
@@ -189,13 +254,12 @@
   };
 
   meta.innerHTML = `
-    <div class="mono">ref_uid: ${esc(original.ref_uid)}</div>
-    <div class="mono">uid: ${esc(original.container_id)}</div>
-    <div class="mono">created: ${esc(new Date(original.created_at).toLocaleString())} by ${esc(original.created_by||"")}</div>
-    ${original.updated_at ? `<div class="mono">updated: ${esc(new Date(original.updated_at).toLocaleString())} by ${esc(original.updated_by||"")}</div>` : ""}
+    <div class="meta-chip mono"><strong>ref_uid</strong><br>${esc(original.ref_uid)}</div>
+    <div class="meta-chip mono"><strong>uid</strong><br>${esc(original.container_id)}</div>
+    <div class="meta-chip mono"><strong>created</strong><br>${esc(new Date(original.created_at).toLocaleString())}<br>${esc(original.created_by||"")}</div>
+    ${original.updated_at ? `<div class="meta-chip mono"><strong>updated</strong><br>${esc(new Date(original.updated_at).toLocaleString())}<br>${esc(original.updated_by||"")}</div>` : ""}
   `;
 
-  // Load locations list (active only)
   async function loadLocations(){
     const { data, error } = await sb
       .from("locations")
@@ -224,7 +288,6 @@
   }
 
   await loadLocations();
-
   codeEl.value = original.container_code;
   descEl.value = original.container_description;
   locSel.value = original.location_ref_uid || "";
@@ -232,9 +295,13 @@
   let editing = false;
   let pendingPhotoBlob = null;
 
-  async function renderPhoto(){
+  async function renderPhoto(previewUrl=null){
+    if (previewUrl){
+      photoWrap.innerHTML = `<img src="${previewUrl}" alt="Container photo preview" />`;
+      return;
+    }
     const url = await signedUrl("container-photos", original.photo_path);
-    photoWrap.innerHTML = url ? `<img class="thumb" style="width:140px;height:140px;border-radius:16px" src="${url}" />` : `<div class="small-note">No photo</div>`;
+    photoWrap.innerHTML = url ? `<img src="${url}" alt="Container photo" />` : `<div class="small-note">No photo</div>`;
     const img = photoWrap.querySelector("img");
     if (img){
       img.style.cursor = editing ? "pointer" : "default";
@@ -263,7 +330,6 @@
       pendingPhotoBlob !== null
     );
   }
-
   function updateSaveState(){
     const ok = detectChanges();
     btnSave.disabled = !ok;
@@ -281,14 +347,13 @@
     if (!f) return;
     pendingPhotoBlob = await compressImageToJpeg(f, 1024, 0.72);
     const url = URL.createObjectURL(pendingPhotoBlob);
-    photoWrap.innerHTML = `<img class="thumb" style="width:140px;height:140px;border-radius:16px;cursor:pointer" src="${url}" />`;
+    await renderPhoto(url);
     updateSaveState();
   });
 
   btnEdit.addEventListener("click", () => {
     if (!editing) setEditing(true);
     else {
-      // cancel
       codeEl.value = original.container_code;
       descEl.value = original.container_description;
       locSel.value = original.location_ref_uid || "";
@@ -301,10 +366,9 @@
     tbl.style.display = "none";
     note.textContent = "Loading items…";
 
-    // We'll show location code by joining locations table in a second query (simple MVP approach)
     const { data: items, error } = await sb
       .from("items")
-      .select("ref_uid, item_description, quantity, created_by, created_at, photo_path, container_code")
+      .select("item_id, ref_uid, item_description, quantity, created_by, created_at, photo_path, container_code")
       .eq("is_active", true)
       .eq("container_code", original.container_code)
       .order("created_at", { ascending:false })
@@ -320,7 +384,6 @@
       return;
     }
 
-    // Resolve location text
     let locText = "";
     if (original.location_ref_uid){
       const { data: loc } = await sb
@@ -337,27 +400,41 @@
 
     for (const it of items){
       const tr = document.createElement("tr");
-      tr.style.cursor = "pointer";
-      tr.addEventListener("click", () => window.location.href = `item_detail.html?ref_uid=${encodeURIComponent(it.ref_uid)}`);
-
       const url = await signedUrl("item-photos", it.photo_path);
 
       tr.innerHTML = `
-        <td>${url ? `<img class="thumb" src="${url}"/>` : ""}</td>
+        <td>${url ? `<img class="thumb" src="${url}" alt="Item photo" />` : ""}</td>
         <td>${esc(it.item_description)}</td>
         <td class="mono">${esc(String(it.quantity ?? 1))}</td>
         <td class="mono">${esc(it.created_by || "")}</td>
         <td class="mono">${esc(locText)}</td>
         <td class="mono">${esc(new Date(it.created_at).toLocaleString())}</td>
+        <td class="no-print">
+          <div class="action-stack">
+            <a class="icon-circle icon-edit" href="item_detail.html?ref_uid=${encodeURIComponent(it.ref_uid)}" title="Edit item">✎</a>
+            <button class="icon-circle icon-delete" data-del-item="${esc(it.item_id)}" title="Delete item">✕</button>
+          </div>
+        </td>
       `;
       tbody.appendChild(tr);
+
+      tr.querySelector('[data-del-item="' + it.item_id + '"]').addEventListener("click", async (e) => {
+        e.preventDefault();
+        const ok = await askConfirm("Delete item?", (it.item_description || "(no description)") + " from " + original.container_code);
+        if (!ok) return;
+        const { error: delErr } = await sb.from("items").update({ is_active:false }).eq("item_id", it.item_id);
+        if (delErr) showBanner("err","Delete failed: " + (delErr.message || delErr));
+        else {
+          showBanner("ok","Item deleted.");
+          await loadItemsTable();
+        }
+      });
     }
   }
 
   btnSave.addEventListener("click", async () => {
     try{
       if (!detectChanges()) return;
-
       const newCode = codeEl.value.trim();
       if (!newCode){
         showBanner("err","Container Code required.");
@@ -367,14 +444,12 @@
       const newDesc = descEl.value.trim();
       const newLoc = locSel.value || null;
 
-      // mark old inactive
       const { error: offErr } = await sb
         .from("containers")
         .update({ is_active: false })
         .eq("container_id", original.container_id);
       if (offErr) throw offErr;
 
-      // insert new version
       let { data: newRow, error: insErr } = await sb
         .from("containers")
         .insert([{
@@ -390,28 +465,19 @@
         .single();
       if (insErr) throw insErr;
 
-      // photo
       if (pendingPhotoBlob){
         const photoPath = `containers/${original.ref_uid}/${newRow.container_id}.jpg`;
         const { error: upErr } = await sb.storage.from("container-photos")
           .upload(photoPath, pendingPhotoBlob, { contentType:"image/jpeg", upsert:true });
         if (upErr) throw upErr;
 
-        const { error: pErr } = await sb
-          .from("containers")
-          .update({ photo_path: photoPath })
-          .eq("container_id", newRow.container_id);
+        const { error: pErr } = await sb.from("containers").update({ photo_path: photoPath }).eq("container_id", newRow.container_id);
         if (pErr) throw pErr;
       } else {
-        // carry forward old path
-        const { error: pErr } = await sb
-          .from("containers")
-          .update({ photo_path: original.photo_path })
-          .eq("container_id", newRow.container_id);
+        const { error: pErr } = await sb.from("containers").update({ photo_path: original.photo_path }).eq("container_id", newRow.container_id);
         if (pErr) throw pErr;
       }
 
-      // If container_code changed, update items (create new versions) to preserve history safely
       if (newCode !== original.container_code){
         const { data: activeItems, error: itErr } = await sb
           .from("items")
@@ -419,15 +485,12 @@
           .eq("is_active", true)
           .eq("container_code", original.container_code)
           .limit(2000);
-
         if (itErr) throw itErr;
 
         for (const it of (activeItems||[])){
-          // mark old item inactive
           const { error: offItemErr } = await sb.from("items").update({ is_active:false }).eq("item_id", it.item_id);
           if (offItemErr) throw offItemErr;
 
-          // create new version with updated container_code
           const { data: newIt, error: newItErr } = await sb
             .from("items")
             .insert([{
@@ -444,7 +507,6 @@
             .single();
           if (newItErr) throw newItErr;
 
-          // carry forward photo_path
           await sb.from("items").update({ photo_path: it.photo_path }).eq("item_id", newIt.item_id);
         }
       }
@@ -459,7 +521,6 @@
   await renderPhoto();
   setEditing(false);
   await loadItemsTable();
-
 })();
 </script>
 </body>
