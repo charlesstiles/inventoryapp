@@ -7,75 +7,38 @@
   <link rel="stylesheet" href="styles.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js"></script>
-  <style>
-    body{background:#e9eef5;color:#15202b}
-    .home-wrap{max-width:980px;margin:0 auto;padding:24px}
-    .hero,.auth-box,.dash-box{
-      background:#ffffff;border-radius:16px;padding:24px;box-shadow:0 2px 12px rgba(0,0,0,.08)
-    }
-    .hero{margin-bottom:18px}
-    .hero h1{margin:0 0 6px 0;color:#101820}
-    .hero p{margin:0;color:#334155}
-    .auth-box h2,.dash-box h2{color:#101820}
-    label{font-weight:700;color:#17212b}
-    input{
-      width:100%;padding:10px 12px;border:1px solid #94a3b8;border-radius:8px;background:#fff;color:#17212b
-    }
-    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-top:10px}
-    .app-card{
-      display:block;text-decoration:none;color:#111827;background:#f8fafc;border:1px solid #cbd5e1;
-      border-radius:14px;padding:18px;min-height:108px
-    }
-    .app-card:hover{background:#eef3f8}
-    .app-card h3{margin:0 0 8px 0;font-size:18px;color:#0f172a}
-    .app-card p{margin:0;color:#334155;font-size:14px;line-height:1.35}
-    .muted{color:#475569;font-size:13px}
-    .status{
-      font:13px/1.4 system-ui;padding:10px 12px;background:#edf4ff;border:1px solid #bfdbfe;
-      color:#0f172a;border-radius:8px;margin:12px 0 16px 0;font-weight:600
-    }
-    .banner{display:none;padding:12px 14px;border-radius:8px;margin-bottom:12px;font-weight:700}
-    .banner.ok{background:#dff3e4;color:#0b4f1e}
-    .banner.err{background:#fce2e2;color:#7a1320}
-    .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
-    .btn,.btn.secondary,button{
-      display:inline-block;padding:10px 14px;border:1px solid #94a3b8;border-radius:8px;background:#f8fafc;
-      color:#17212b;text-decoration:none;cursor:pointer
-    }
-    .btn:hover,.btn.secondary:hover,button:hover{background:#eef3f8}
-    @media (max-width:640px){ .home-wrap{padding:14px} }
-  </style>
+  <script src="navigation.js"></script>
 </head>
 <body>
   <div class="home-wrap">
+    <div id="navBar"></div>
+
     <div class="hero">
       <h1>Inventory App</h1>
       <p>Warehouse inventory capture, search, reporting, and container management.</p>
     </div>
 
-    <div id="banner" class="banner"></div>
+    <div id="banner" class="banner" style="display:none;"></div>
 
-    <div id="signedOut" class="auth-box" style="display:none;">
+    <div id="signedOut" class="card" style="display:none;">
       <h2 style="margin-top:0;">Sign In</h2>
       <div id="authStatus" class="status">Checking session…</div>
 
       <label>Email</label>
       <input id="email" type="email" placeholder="you@example.com" />
 
-      <label style="margin-top:12px;display:block;">Password</label>
+      <label>Password</label>
       <input id="password" type="password" placeholder="••••••••" />
 
-      <div class="actions">
-        <button class="btn" id="btnLogin" style="max-width:180px;">Sign In</button>
-        <a class="btn secondary" href="capture.html" style="max-width:220px;text-decoration:none;text-align:center;">Open Capture Directly</a>
+      <div class="row" style="grid-template-columns:220px 220px; margin-top:10px;">
+        <button class="btn" id="btnLogin">Sign In</button>
+        <a class="btn secondary" href="capture.html" style="display:flex;align-items:center;justify-content:center;">Open Capture</a>
       </div>
 
-      <div class="muted" style="margin-top:12px;">
-        Use this page as the main entry point to the application.
-      </div>
+      <div class="small-note" style="margin-top:12px;">Use this page as the main entry point to the application.</div>
     </div>
 
-    <div id="signedIn" class="dash-box" style="display:none;">
+    <div id="signedIn" class="card" style="display:none;">
       <h2 style="margin-top:0;">Dashboard</h2>
       <div id="userStatus" class="status"></div>
 
@@ -84,26 +47,27 @@
           <h3>Capture Items</h3>
           <p>Add items quickly to new or existing containers.</p>
         </a>
-
         <a class="app-card" href="search.html">
           <h3>Search Inventory</h3>
           <p>Find items by description or container code.</p>
         </a>
-
         <a class="app-card" href="inventory_report.html">
           <h3>Inventory Report</h3>
           <p>Review contents by container, print, edit, and delete test data.</p>
         </a>
-
         <a class="app-card" href="container.html">
           <h3>Containers</h3>
           <p>Open container tools and detail workflows.</p>
         </a>
+        <a class="app-card" href="location_detail.html">
+          <h3>Locations</h3>
+          <p>Open, add, and edit location records.</p>
+        </a>
       </div>
 
-      <div class="actions">
-        <button class="btn secondary" id="btnRefreshSession" style="max-width:200px;">Refresh Session</button>
-        <button class="btn secondary" id="btnLogout" style="max-width:180px;">Logout</button>
+      <div class="row" style="grid-template-columns:220px 220px; margin-top:14px;">
+        <button class="btn secondary" id="btnRefreshSession">Refresh Session</button>
+        <button class="btn secondary" id="btnLogout">Logout</button>
       </div>
     </div>
   </div>
@@ -140,6 +104,7 @@
   }
   async function refreshSession(){
     try{
+      await APP_NAV.render("navBar");
       const { data: { session } } = await sb.auth.getSession();
       if (session?.user){ showSignedIn(session.user); return; }
       const { data } = await sb.auth.getUser();
@@ -161,6 +126,7 @@
       const { data } = await sb.auth.getUser();
       if (!data?.user) throw new Error("Login succeeded but no user session was returned.");
       showSignedIn(data.user);
+      await APP_NAV.render("navBar");
       showBanner("ok", "Login successful.");
     }catch(e){
       showSignedOut("Sign in failed.");
@@ -168,11 +134,21 @@
     }
   });
   btnLogout.addEventListener("click", async () => {
-    try{ await sb.auth.signOut(); showSignedOut("Signed out."); showBanner("ok", "Logged out."); }
-    catch(e){ showBanner("err", "Logout failed: " + (e.message || e)); }
+    try{
+      await sb.auth.signOut();
+      await APP_NAV.render("navBar");
+      showSignedOut("Signed out.");
+      showBanner("ok", "Logged out.");
+    }catch(e){
+      showBanner("err", "Logout failed: " + (e.message || e));
+    }
   });
   btnRefreshSession.addEventListener("click", refreshSession);
-  sb.auth.onAuthStateChange(async (_event, session) => { if (session?.user) showSignedIn(session.user); else showSignedOut("Not signed in."); });
+  sb.auth.onAuthStateChange(async (_event, session) => {
+    await APP_NAV.render("navBar");
+    if (session?.user) showSignedIn(session.user);
+    else showSignedOut("Not signed in.");
+  });
   refreshSession();
 })();
 </script>
