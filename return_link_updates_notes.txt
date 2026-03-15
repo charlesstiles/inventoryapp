@@ -1,0 +1,10 @@
+Replace these pages so return flow works consistently:
+
+- inventory_report.html
+- container.html
+- container_detail.html
+
+Each now passes:
+&return=<current page url>
+
+into item_detail.html links.
