@@ -8,10 +8,10 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js"></script>
   <script src="navigation.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/quagga@0.12.1/dist/quagga.min.js"></script>
+  <script src="https://unpkg.com/html5-qrcode"></script>
   <style>
-    /* Update: iPhone/Android scanner fixes, autofocus, and cleaner modal.
-       Revision: 2026-03-15.v6 */
+    /* Update: Switch scanner to QR using html5-qrcode, keep manual entry fallback.
+       Revision: 2026-03-15.v7 */
     #authStatus{ display:none !important; }
 
     .modalBackdrop{
@@ -45,8 +45,8 @@
     .videoBox{
       position:relative !important;
       width:100% !important;
-      height:320px !important;
-      min-height:320px !important;
+      height:340px !important;
+      min-height:340px !important;
       overflow:hidden !important;
       background:#000 !important;
       border-radius:14px !important;
@@ -55,12 +55,10 @@
     #scanner{
       width:100% !important;
       height:100% !important;
-      min-height:320px !important;
+      min-height:340px !important;
     }
     #scanner video,
-    #scanner canvas,
-    .videoBox video,
-    .videoBox canvas{
+    #scanner canvas{
       width:100% !important;
       height:100% !important;
       object-fit:cover !important;
@@ -68,10 +66,10 @@
     }
     .scanHint{
       position:absolute !important;
-      top:38% !important;
-      left:10% !important;
-      width:80% !important;
-      height:24% !important;
+      top:22% !important;
+      left:22% !important;
+      width:56% !important;
+      height:56% !important;
       border:2px solid rgba(255,255,255,.85) !important;
       border-radius:12px !important;
       box-shadow:0 0 0 2000px rgba(0,0,0,.25) inset !important;
@@ -82,13 +80,12 @@
       padding-left:4px;
       margin-top:10px;
     }
-    @media (orientation: landscape){
-      .scanHint{
-        top:18% !important;
-        left:36% !important;
-        width:28% !important;
-        height:64% !important;
+    @media (max-width:640px){
+      .videoBox{
+        height:300px !important;
+        min-height:300px !important;
       }
+      #scanner{ min-height:300px !important; }
     }
   </style>
 </head>
@@ -119,7 +116,7 @@
         <label>Container Code</label>
         <div class="row">
           <input id="containerCode" type="text" placeholder="e.g. TOTE0076" />
-          <button class="btn secondary" id="btnScanContainer" style="max-width:180px;">Scan</button>
+          <button class="btn secondary" id="btnScanContainer" style="max-width:180px;">Scan QR</button>
         </div>
         <div class="small-note" id="containerSetNote"></div>
 
@@ -147,7 +144,7 @@
   <div class="modalBackdrop" id="scanModal">
     <div class="modal">
       <div class="modalHeader">
-        <h3>Scan Code 39 Container Label</h3>
+        <h3>Scan QR Container Label</h3>
         <button class="btn secondary" id="btnCloseScan" style="width:auto;">Close</button>
       </div>
       <div class="modalBody">
@@ -155,7 +152,7 @@
           <div class="scanHint"></div>
           <div id="scanner"></div>
         </div>
-        <div class="small-note scanSectionNote">Tip: hold steady ~8–14 inches away. Align the barcode within the box.</div>
+        <div class="small-note scanSectionNote">Tip: hold steady and center the QR code inside the white square.</div>
       </div>
     </div>
   </div>
@@ -181,6 +178,8 @@
   const passwordEl = document.getElementById("password");
 
   const sb = getSupabase();
+  let qrScanner = null;
+  let scanActive = false;
 
   function focusContainerField(){
     setTimeout(() => {
@@ -220,18 +219,8 @@
     showBanner("err", "Unhandled: " + msg);
   });
 
-  function code39FullAsciiNormalize(raw){
-    if (!raw) return raw;
-    let out = String(raw).replace(/\*/g, "");
-    for (let i=0; i<out.length; i++){
-      if (out[i] === "+" && i+1 < out.length){
-        const next = out[i+1];
-        if (next >= "A" && next <= "Z"){
-          out = out.slice(0,i) + next.toLowerCase() + out.slice(i+2);
-        }
-      }
-    }
-    return out.trim();
+  function normalizeScannedCode(raw){
+    return String(raw || "").trim().toUpperCase();
   }
 
   async function renderNavSafe(timeoutMs = 1200){
@@ -368,71 +357,60 @@
     }
   }
 
-  function closeScan(){
+  async function closeScan(){
     scanModal.style.display = "none";
     document.body.style.overflow = "";
-    try { Quagga.offDetected(); } catch(e) {}
-    try { Quagga.stop(); } catch(e) {}
+    scanActive = false;
+    try {
+      if (qrScanner){
+        await qrScanner.stop();
+        await qrScanner.clear();
+        qrScanner = null;
+      }
+    } catch(e) {}
   }
 
-  function openScan(){
+  async function openScan(){
+    if (scanActive) return;
+    scanActive = true;
     scanModal.style.display = "flex";
     document.body.style.overflow = "hidden";
-    const target = document.getElementById("scanner");
-    target.innerHTML = "";
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-    showBanner("ok", "Camera opened. Aim the barcode inside the white box.");
+    const scannerTarget = document.getElementById("scanner");
+    scannerTarget.innerHTML = "";
+    showBanner("ok", "Camera opened. Aim the QR code inside the white square.");
 
-    try { Quagga.offDetected(); } catch(e) {}
-    try { Quagga.stop(); } catch(e) {}
-
-    Quagga.init({
-      inputStream: {
-        type: "LiveStream",
-        target: target,
-        constraints: {
-          facingMode: "environment",
-          width: { min: 640, ideal: 1280, max: 1920 },
-          height: { min: 480, ideal: 720, max: 1080 },
-          aspectRatio: { ideal: 1.777 }
+    try{
+      qrScanner = new Html5Qrcode("scanner");
+      await qrScanner.start(
+        { facingMode: "environment" },
+        {
+          fps: 10,
+          qrbox: { width: 250, height: 250 },
+          aspectRatio: 1.777
         },
-        area: { top:"18%", right:"10%", left:"10%", bottom:"18%" }
-      },
-      locator: {
-        patchSize: "large",
-        halfSample: false
-      },
-      numOfWorkers: isIOS ? 0 : 2,
-      frequency: 6,
-      decoder: { readers: ["code_39_reader"] },
-      locate: true
-    }, (err) => {
-      if (err) {
-        showBanner("err", "Scanner init failed: " + (err.message || err));
-        closeScan();
-        return;
-      }
-      Quagga.start();
-    });
-
-    Quagga.onDetected((res) => {
-      const raw = res?.codeResult?.code;
-      if (!raw) return;
-      const normalized = code39FullAsciiNormalize(raw);
-      if (!normalized) return;
-
-      containerCodeEl.value = normalized.toUpperCase();
-      containerSetNote.textContent = `Container set: ${normalized.toUpperCase()}`;
-      showBanner("ok", `Scanned: ${normalized.toUpperCase()}`);
-      closeScan();
-      focusContainerField();
-    });
+        (decodedText) => {
+          const normalized = normalizeScannedCode(decodedText);
+          if (!normalized) return;
+          containerCodeEl.value = normalized;
+          containerSetNote.textContent = `Container set: ${normalized}`;
+          showBanner("ok", `Scanned: ${normalized}`);
+          closeScan();
+          focusContainerField();
+        },
+        () => {
+          // ignore scan misses
+        }
+      );
+    } catch (err){
+      showBanner("err", "Scanner init failed: " + (err.message || err));
+      await closeScan();
+    }
   }
 
   btnLogin?.addEventListener("click", login);
   btnSave?.addEventListener("click", saveItem);
-  btnScanContainer?.addEventListener("click", openScan);
-  btnCloseScan?.addEventListener("click", closeScan);
+  btnScanContainer?.addEventListener("click", () => openScan());
+  btnCloseScan?.addEventListener("click", () => closeScan());
 
   containerCodeEl?.addEventListener("keydown", (e) => {
     if (e.key === "Enter"){
