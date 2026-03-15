@@ -144,6 +144,13 @@
   const confirmProceed = document.getElementById("confirmProceed");
   let confirmResolve = null;
 
+  function currentReturnUrl(){
+    return window.location.href;
+  }
+  function itemDetailUrl(refUid){
+    return `item_detail.html?ref_uid=${encodeURIComponent(refUid)}&return=${encodeURIComponent(currentReturnUrl())}`;
+  }
+
   confirmCancel.onclick = () => {
     confirmOverlay.style.display = "none";
     if (confirmResolve) confirmResolve(false);
@@ -190,7 +197,8 @@
     const nh = Math.round(h*scale);
     const canvas = document.createElement("canvas");
     canvas.width = nw; canvas.height = nh;
-    canvas.getContext("2d").drawImage(img, 0, 0, nw, nh);
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(img, 0, 0, nw, nh);
     const blob = await new Promise((res) => canvas.toBlob(res, "image/jpeg", quality));
     URL.revokeObjectURL(url);
     return blob;
@@ -411,7 +419,7 @@
         <td class="mono">${esc(new Date(it.created_at).toLocaleString())}</td>
         <td class="no-print">
           <div class="action-stack">
-            <a class="icon-circle icon-edit" href="item_detail.html?ref_uid=${encodeURIComponent(it.ref_uid)}" title="Edit item">✎</a>
+            <a class="icon-circle icon-edit" href="${itemDetailUrl(it.ref_uid)}" title="Edit item">✎</a>
             <button class="icon-circle icon-delete" data-del-item="${esc(it.item_id)}" title="Delete item">✕</button>
           </div>
         </td>
@@ -512,7 +520,8 @@
       }
 
       showBanner("ok","Saved new version ✅");
-      window.location.href = `container_detail.html?ref_uid=${encodeURIComponent(original.ref_uid)}${returnParam ? `&return=${encodeURIComponent(returnParam)}` : ""}`;
+      const nextUrl = `container_detail.html?ref_uid=${encodeURIComponent(original.ref_uid)}${returnParam ? `&return=${encodeURIComponent(returnParam)}` : ""}`;
+      window.location.href = nextUrl;
     }catch(e){
       showBanner("err","Save failed: " + (e.message || e));
     }
