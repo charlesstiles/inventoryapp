@@ -14,9 +14,7 @@
     color:#0f172a !important;
     background:#e2e8f0 !important;
   }
-  .cancel-strong:hover{
-    background:#cbd5e1 !important;
-  }
+  .cancel-strong:hover{ background:#cbd5e1 !important; }
   .item-action-stack{
     display:flex;
     gap:8px;
@@ -46,20 +44,19 @@
     border-color:#fecaca;
     background:#fff5f5;
   }
-  .icon-item-delete:hover{
-    background:#fee2e2;
-  }
+  .icon-item-delete:hover{ background:#fee2e2; }
   .row-deleting td{
     opacity:.55;
     transition:opacity .15s ease;
   }
-  .row-deleting .item-desc{
-    text-decoration:line-through;
-  }
+  .row-deleting .item-desc{ text-decoration:line-through; }
   .row-deleting .icon-item,
   .row-deleting .icon-circle{
     pointer-events:none;
     opacity:.5;
+  }
+  .hidden{
+    display:none !important;
   }
 </style>
 </head>
@@ -146,13 +143,18 @@ let confirmResolve = null;
 let state = { containers: [], byContainer: {} };
 const expandedState = {};
 
+function currentReturnUrl(){
+  return window.location.href;
+}
+function itemDetailUrl(refUid){
+  return `item_detail.html?ref_uid=${encodeURIComponent(refUid)}&return=${encodeURIComponent(currentReturnUrl())}`;
+}
 function showBanner(type, msg){
   banner.className = "banner " + (type || "ok");
   banner.textContent = msg;
   banner.style.display = "block";
   setTimeout(() => banner.style.display = "none", 4500);
 }
-
 confirmCancel.onclick = () => {
   confirmOverlay.style.display = "none";
   if (confirmResolve) confirmResolve(false);
@@ -200,8 +202,8 @@ async function loadData(){
 }
 function toggleContainer(code){
   expandedState[code] = !expandedState[code];
-  const content = document.querySelector('[data-content="' + code + '"]');
-  const btn = document.querySelector('[data-toggle="' + code + '"]');
+  const content = document.querySelector('[data-content="' + CSS.escape(code) + '"]');
+  const btn = document.querySelector('[data-toggle="' + CSS.escape(code) + '"]');
   if (!content || !btn) return;
   const isOpen = !!expandedState[code];
   content.classList.toggle("hidden", !isOpen);
@@ -230,13 +232,13 @@ function updateSummaryFromDOM(){
   summary.textContent = containers + " container(s), " + items + " item(s).";
 }
 function updateContainerMeta(containerCode){
-  const group = reportRoot.querySelector('.container-group[data-container-code="' + containerCode + '"]');
+  const group = reportRoot.querySelector('.container-group[data-container-code="' + CSS.escape(containerCode) + '"]');
   if (!group) return;
   const visibleItems = group.querySelectorAll('tbody tr[data-item-id]:not([data-deleted="1"])').length;
   const meta = group.querySelector(".container-meta");
   if (meta) meta.textContent = visibleItems + " active item(s)";
   const tbody = group.querySelector("tbody");
-  const content = group.querySelector('[data-content="' + containerCode + '"]');
+  const content = group.querySelector('[data-content="' + CSS.escape(containerCode) + '"]');
   if (tbody && visibleItems === 0 && content){
     const existingRows = tbody.querySelectorAll('tr[data-item-id]');
     existingRows.forEach(r => r.remove());
@@ -335,7 +337,7 @@ async function render(){
 
     const group = document.createElement("div");
     group.className = "container-group";
-    group.dataset.containerCode = container.container_code;
+    group.setAttribute("data-container-code", container.container_code);
 
     const head = document.createElement("div");
     head.className = "container-head";
@@ -348,14 +350,14 @@ async function render(){
         </div>
       </div>
       <div class="action-stack no-print">
-        <a class="icon-circle icon-edit" href="container_detail.html?container_code=${encodeURIComponent(container.container_code)}" title="Edit container">✎</a>
+        <a class="icon-circle icon-edit" href="container_detail.html?container_code=${encodeURIComponent(container.container_code)}&return=${encodeURIComponent(currentReturnUrl())}" title="Edit container">✎</a>
         <button class="icon-circle icon-delete" data-del-container="${esc(container.container_code)}" title="Delete container">✕</button>
       </div>
     `;
     group.appendChild(head);
 
     const content = document.createElement("div");
-    content.className = expandedState[container.container_code] ? "" : "hidden";
+    content.className = expandedState[container.container_code] ? "container-content" : "container-content hidden";
     content.setAttribute("data-content", container.container_code);
 
     if (items.length === 0){
@@ -392,14 +394,14 @@ async function render(){
           <td>${item.created_at ? new Date(item.created_at).toLocaleString() : ""}</td>
           <td class="no-print">
             <div class="item-action-stack">
-              <a class="icon-item" href="item_detail.html?ref_uid=${encodeURIComponent(item.ref_uid)}" title="Edit item">✎</a>
+              <a class="icon-item" href="${itemDetailUrl(item.ref_uid)}" title="Edit item">✎</a>
               <button class="icon-item icon-item-delete" data-del-item="${esc(item.item_id)}" title="Delete item">✕</button>
             </div>
           </td>
         `;
         tbody.appendChild(tr);
 
-        tr.querySelector('[data-del-item="' + item.item_id + '"]').addEventListener("click", () => {
+        tr.querySelector('[data-del-item="' + CSS.escape(item.item_id) + '"]').addEventListener("click", () => {
           deleteItemInPlace(item, tr).catch(err => {
             tr.classList.remove("row-deleting");
             tr.dataset.deleted = "0";
@@ -413,10 +415,10 @@ async function render(){
     group.appendChild(content);
     reportRoot.appendChild(group);
 
-    head.querySelector('[data-toggle="' + container.container_code + '"]').addEventListener("click", () => {
+    head.querySelector('[data-toggle="' + CSS.escape(container.container_code) + '"]').addEventListener("click", () => {
       toggleContainer(container.container_code);
     });
-    head.querySelector('[data-del-container="' + container.container_code + '"]').addEventListener("click", () => {
+    head.querySelector('[data-del-container="' + CSS.escape(container.container_code) + '"]').addEventListener("click", () => {
       deleteContainerCascade(container, group).catch(err => {
         group.style.opacity = "1";
         showBanner("err", "Delete failed: " + (err.message || err));
