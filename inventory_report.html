@@ -8,10 +8,66 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="config.js"></script>
 <script src="navigation.js"></script>
+<style>
+  .cancel-strong{
+    border:1px solid #64748b !important;
+    color:#0f172a !important;
+    background:#e2e8f0 !important;
+  }
+  .cancel-strong:hover{
+    background:#cbd5e1 !important;
+  }
+  .item-action-stack{
+    display:flex;
+    gap:8px;
+    align-items:center;
+  }
+  .icon-item{
+    width:28px;
+    height:28px;
+    border-radius:10px;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    text-decoration:none;
+    cursor:pointer;
+    border:1px solid #cbd5e1;
+    background:#f8fafc;
+    color:#334155;
+    font-size:13px;
+    font-weight:900;
+  }
+  .icon-item:hover{
+    background:#eef2f7;
+    text-decoration:none;
+  }
+  .icon-item-delete{
+    color:#991b1b;
+    border-color:#fecaca;
+    background:#fff5f5;
+  }
+  .icon-item-delete:hover{
+    background:#fee2e2;
+  }
+  .row-deleting td{
+    opacity:.55;
+    transition:opacity .15s ease;
+  }
+  .row-deleting .item-desc{
+    text-decoration:line-through;
+  }
+  .row-deleting .icon-item,
+  .row-deleting .icon-circle{
+    pointer-events:none;
+    opacity:.5;
+  }
+</style>
 </head>
 <body>
 <div class="page">
   <div id="navBar"></div>
+  <div id="banner" class="banner" style="display:none;"></div>
+
   <div class="card">
     <h1>Inventory Report</h1>
 
@@ -63,7 +119,7 @@
     <h3 id="confirmTitle">Confirm</h3>
     <p id="confirmMessage"></p>
     <div class="confirm-actions">
-      <button id="confirmCancel" class="btn secondary" style="max-width:120px;">Cancel</button>
+      <button id="confirmCancel" class="btn secondary cancel-strong" style="max-width:120px;">Cancel</button>
       <button id="confirmProceed" class="btn" style="max-width:120px;background:linear-gradient(180deg,#dc2626,#b91c1c);">Delete</button>
     </div>
   </div>
@@ -76,6 +132,7 @@ const sortByEl = document.getElementById("sortBy");
 const thumbModeEl = document.getElementById("thumbMode");
 const reportRoot = document.getElementById("reportRoot");
 const summary = document.getElementById("summary");
+const banner = document.getElementById("banner");
 const btnExpandAll = document.getElementById("btnExpandAll");
 const btnCollapseAll = document.getElementById("btnCollapseAll");
 const btnRefresh = document.getElementById("btnRefresh");
@@ -88,6 +145,13 @@ const confirmProceed = document.getElementById("confirmProceed");
 let confirmResolve = null;
 let state = { containers: [], byContainer: {} };
 const expandedState = {};
+
+function showBanner(type, msg){
+  banner.className = "banner " + (type || "ok");
+  banner.textContent = msg;
+  banner.style.display = "block";
+  setTimeout(() => banner.style.display = "none", 4500);
+}
 
 confirmCancel.onclick = () => {
   confirmOverlay.style.display = "none";
@@ -152,28 +216,90 @@ function setAllContainers(expanded){
     btn.textContent = expanded ? "−" : "+";
   });
 }
-async function deleteItem(item){
-  const ok = await askConfirm("Delete item?", (item.item_description || "(no description)") + " from " + item.container_code);
-  if (!ok) return;
-  const { error } = await sb.from("items").update({ is_active: false }).eq("item_id", item.item_id);
-  if (error) throw error;
-  await render();
-}
-async function deleteContainer(container, items){
-  if (items.length){
-    await askConfirm("Container not empty", "Container " + container.container_code + " still has " + items.length + " active item(s). Delete the items first.");
-    return;
-  }
-  const ok = await askConfirm("Delete container?", "Delete empty container " + container.container_code + "?");
-  if (!ok) return;
-  const { error } = await sb.from("containers").update({ is_active: false }).eq("container_id", container.container_id);
-  if (error) throw error;
-  await render();
-}
 function matchesFilter(containerCode, itemDescription, q){
   const s = q.trim().toLowerCase();
   if (!s) return true;
   return String(containerCode || "").toLowerCase().includes(s) || String(itemDescription || "").toLowerCase().includes(s);
+}
+function updateSummaryFromDOM(){
+  const containers = reportRoot.querySelectorAll(".container-group").length;
+  let items = 0;
+  reportRoot.querySelectorAll("tbody tr[data-item-id]").forEach(tr => {
+    if (tr.dataset.deleted !== "1") items += 1;
+  });
+  summary.textContent = containers + " container(s), " + items + " item(s).";
+}
+function updateContainerMeta(containerCode){
+  const group = reportRoot.querySelector('.container-group[data-container-code="' + containerCode + '"]');
+  if (!group) return;
+  const visibleItems = group.querySelectorAll('tbody tr[data-item-id]:not([data-deleted="1"])').length;
+  const meta = group.querySelector(".container-meta");
+  if (meta) meta.textContent = visibleItems + " active item(s)";
+  const tbody = group.querySelector("tbody");
+  const content = group.querySelector('[data-content="' + containerCode + '"]');
+  if (tbody && visibleItems === 0 && content){
+    const existingRows = tbody.querySelectorAll('tr[data-item-id]');
+    existingRows.forEach(r => r.remove());
+    if (!content.querySelector(".empty-note")){
+      const empty = document.createElement("div");
+      empty.className = "empty-note";
+      empty.textContent = "No matching active items in this container.";
+      content.appendChild(empty);
+    }
+  }
+}
+async function deleteItemInPlace(item, rowEl){
+  const ok = await askConfirm("Delete item?", (item.item_description || "(no description)") + " from " + item.container_code);
+  if (!ok) return;
+  rowEl.classList.add("row-deleting");
+  rowEl.dataset.deleted = "1";
+  const { error } = await sb.from("items").update({ is_active: false }).eq("item_id", item.item_id);
+  if (error){
+    rowEl.classList.remove("row-deleting");
+    rowEl.dataset.deleted = "0";
+    throw error;
+  }
+  updateContainerMeta(item.container_code);
+  updateSummaryFromDOM();
+  showBanner("ok", "Item deleted.");
+  setTimeout(() => {
+    rowEl.remove();
+    updateContainerMeta(item.container_code);
+    updateSummaryFromDOM();
+  }, 900);
+}
+async function deleteContainerCascade(container, groupEl){
+  const items = state.byContainer[container.container_code] || [];
+  const count = items.filter(i => i.is_active !== false).length;
+  const msg = count
+    ? `Delete container ${container.container_code} and all ${count} item(s) inside it?`
+    : `Delete empty container ${container.container_code}?`;
+  const ok = await askConfirm("Delete container?", msg);
+  if (!ok) return;
+
+  groupEl.style.opacity = ".6";
+  const ops = [
+    sb.from("containers").update({ is_active: false }).eq("container_id", container.container_id)
+  ];
+  if (count){
+    ops.push(
+      sb.from("items").update({ is_active: false }).eq("container_code", container.container_code).eq("is_active", true)
+    );
+  }
+  const results = await Promise.all(ops);
+  const err = results.find(r => r.error)?.error;
+  if (err){
+    groupEl.style.opacity = "1";
+    throw err;
+  }
+
+  state.containers = state.containers.filter(c => c.container_code !== container.container_code);
+  delete state.byContainer[container.container_code];
+  showBanner("ok", count ? `Container and ${count} item(s) deleted.` : "Container deleted.");
+  setTimeout(() => {
+    groupEl.remove();
+    updateSummaryFromDOM();
+  }, 250);
 }
 async function render(){
   await loadData();
@@ -209,6 +335,7 @@ async function render(){
 
     const group = document.createElement("div");
     group.className = "container-group";
+    group.dataset.containerCode = container.container_code;
 
     const head = document.createElement("div");
     head.className = "container-head";
@@ -255,6 +382,8 @@ async function render(){
 
       for (const item of items){
         const tr = document.createElement("tr");
+        tr.dataset.itemId = item.item_id;
+        tr.dataset.deleted = "0";
         const thumb = thumbMode === "thumb" ? await signedThumb(item.photo_path) : null;
         tr.innerHTML = `
           <td>${thumbMode === "thumb" ? (thumb ? `<img class="thumb" src="${thumb}">` : "") : ""}</td>
@@ -262,16 +391,20 @@ async function render(){
           <td>${esc(item.quantity || "")}</td>
           <td>${item.created_at ? new Date(item.created_at).toLocaleString() : ""}</td>
           <td class="no-print">
-            <div class="action-stack">
-              <a class="icon-circle icon-edit" href="item_detail.html?ref_uid=${encodeURIComponent(item.ref_uid)}" title="Edit item">✎</a>
-              <button class="icon-circle icon-delete" data-del-item="${esc(item.item_id)}" title="Delete item">✕</button>
+            <div class="item-action-stack">
+              <a class="icon-item" href="item_detail.html?ref_uid=${encodeURIComponent(item.ref_uid)}" title="Edit item">✎</a>
+              <button class="icon-item icon-item-delete" data-del-item="${esc(item.item_id)}" title="Delete item">✕</button>
             </div>
           </td>
         `;
         tbody.appendChild(tr);
 
         tr.querySelector('[data-del-item="' + item.item_id + '"]').addEventListener("click", () => {
-          deleteItem(item).catch(err => alert(err.message || err));
+          deleteItemInPlace(item, tr).catch(err => {
+            tr.classList.remove("row-deleting");
+            tr.dataset.deleted = "0";
+            showBanner("err", "Delete failed: " + (err.message || err));
+          });
         });
       }
       content.appendChild(table);
@@ -284,20 +417,24 @@ async function render(){
       toggleContainer(container.container_code);
     });
     head.querySelector('[data-del-container="' + container.container_code + '"]').addEventListener("click", () => {
-      deleteContainer(container, allItems).catch(err => alert(err.message || err));
+      deleteContainerCascade(container, group).catch(err => {
+        group.style.opacity = "1";
+        showBanner("err", "Delete failed: " + (err.message || err));
+      });
     });
   }
 
   summary.textContent = containers.length + " container(s), " + itemCount + " item(s).";
 }
-qEl.addEventListener("input", () => render().catch(err => alert(err.message || err)));
-sortByEl.addEventListener("change", () => render().catch(err => alert(err.message || err)));
-thumbModeEl.addEventListener("change", () => render().catch(err => alert(err.message || err)));
+qEl.addEventListener("input", () => render().catch(err => showBanner("err", err.message || err)));
+sortByEl.addEventListener("change", () => render().catch(err => showBanner("err", err.message || err)));
+thumbModeEl.addEventListener("change", () => render().catch(err => showBanner("err", err.message || err)));
 btnExpandAll.addEventListener("click", () => setAllContainers(true));
 btnCollapseAll.addEventListener("click", () => setAllContainers(false));
-btnRefresh.addEventListener("click", () => render().catch(err => alert(err.message || err)));
+btnRefresh.addEventListener("click", () => render().catch(err => showBanner("err", err.message || err)));
 btnPrint.addEventListener("click", () => window.print());
-requireAuth().then(user => { if (user) render().catch(err => alert(err.message || err)); });
+
+requireAuth().then(user => { if (user) render().catch(err => showBanner("err", err.message || err)); });
 </script>
 </body>
 </html>
