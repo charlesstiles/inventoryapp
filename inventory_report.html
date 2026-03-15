@@ -1,0 +1,363 @@
+<!--
+Update: Add desktop-friendly inventory report with grouped containers, thumbnails, detail links,
+        safe delete actions with confirmation, and print support.
+Revision: 2026-03-15.v1
+-->
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Inventory Report</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script src="navigation.js"></script>
+  <style>
+    .report-toolbar{
+      display:flex; gap:10px; align-items:end; flex-wrap:wrap; margin-bottom:14px;
+    }
+    .report-toolbar .spacer{ flex:1; }
+    .report-table th, .report-table td{ vertical-align:middle; }
+    .report-table th{ white-space:nowrap; }
+    .thumb-sm{
+      width:48px; height:48px; object-fit:cover; border-radius:8px; border:1px solid #ddd;
+      background:#f6f6f6;
+    }
+    .icon-btn{
+      border:1px solid #d8d8d8; background:#fff; border-radius:8px; padding:6px 8px; cursor:pointer;
+      text-decoration:none; display:inline-block; line-height:1;
+    }
+    .icon-btn:hover{ background:#f7f7f7; }
+    .icon-row{ display:flex; gap:6px; align-items:center; }
+    .container-group{
+      border:1px solid #e5e5e5; border-radius:12px; margin:16px 0; overflow:hidden; background:#fff;
+    }
+    .container-head{
+      display:flex; justify-content:space-between; gap:10px; align-items:flex-start;
+      background:#f7f8fa; border-bottom:1px solid #e5e5e5; padding:12px 14px;
+    }
+    .container-title{ font-weight:700; font-size:18px; }
+    .container-meta{ color:#666; font-size:12px; margin-top:4px; }
+    .empty-note{ color:#666; padding:14px; }
+    .danger-lite{ color:#9c1c1c; border-color:#e6b9b9; }
+    .print-only{ display:none; }
+    @media print{
+      .no-print, #navBar, .banner{ display:none !important; }
+      .print-only{ display:block; }
+      body{ background:#fff; padding:0; }
+      .page{ max-width:none; }
+      .card{ box-shadow:none; border:none; padding:0; }
+      .container-group{ break-inside:avoid; }
+      a{ color:#000; text-decoration:none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div id="navBar" class="no-print"></div>
+    <div id="banner" class="banner" style="display:none;"></div>
+
+    <div class="card">
+      <h1>Inventory Report</h1>
+      <div class="small-note print-only" id="printStamp"></div>
+
+      <div class="report-toolbar no-print">
+        <div style="min-width:260px; flex:1;">
+          <label>Filter</label>
+          <input id="q" type="text" placeholder="container code or item description" />
+        </div>
+        <div>
+          <label>Sort Containers</label>
+          <select id="sortBy">
+            <option value="code">Container Code</option>
+            <option value="recent">Most Recently Added Item</option>
+          </select>
+        </div>
+        <div>
+          <label>Show</label>
+          <select id="thumbMode">
+            <option value="thumb">Thumbnails</option>
+            <option value="none">No Thumbnails</option>
+          </select>
+        </div>
+        <div class="spacer"></div>
+        <button class="btn secondary" id="btnRefresh" style="max-width:140px;">Refresh</button>
+        <button class="btn secondary" id="btnPrint" style="max-width:140px;">Print</button>
+      </div>
+
+      <div class="small-note" id="summary"></div>
+      <div id="reportRoot"></div>
+    </div>
+  </div>
+
+<script>
+(async function(){
+  const banner = document.getElementById("banner");
+  const reportRoot = document.getElementById("reportRoot");
+  const qEl = document.getElementById("q");
+  const sortByEl = document.getElementById("sortBy");
+  const thumbModeEl = document.getElementById("thumbMode");
+  const btnRefresh = document.getElementById("btnRefresh");
+  const btnPrint = document.getElementById("btnPrint");
+  const summary = document.getElementById("summary");
+  const printStamp = document.getElementById("printStamp");
+
+  function showBanner(type, msg){
+    banner.className = "banner " + (type || "ok");
+    banner.textContent = msg;
+    banner.style.display = "block";
+    setTimeout(() => banner.style.display = "none", 5000);
+  }
+
+  function esc(s){
+    return String(s || "").replace(/[&<>"']/g, m => ({
+      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+    }[m]));
+  }
+
+  async function requireAuth(){
+    await window.APP_NAV.render("navBar");
+    const sb = getSupabase();
+    const { data } = await sb.auth.getUser();
+    if (!data.user){
+      window.location.href = "capture.html";
+      return null;
+    }
+    return data.user;
+  }
+
+  async function signedThumb(path){
+    if (!path) return null;
+    const sb = getSupabase();
+    const { data, error } = await sb.storage.from("item-photos").createSignedUrl(path, 60 * 30);
+    if (error) return null;
+    return data?.signedUrl || null;
+  }
+
+  const user = await requireAuth();
+  if (!user) return;
+
+  let state = {
+    containers: [],
+    itemsByContainer: new Map()
+  };
+
+  function itemMatchesFilter(item, q){
+    if (!q) return true;
+    const s = q.toLowerCase();
+    return (item.container_code || "").toLowerCase().includes(s)
+      || (item.item_description || "").toLowerCase().includes(s);
+  }
+
+  function containerMatchesFilter(container, items, q){
+    if (!q) return true;
+    const s = q.toLowerCase();
+    if ((container.container_code || "").toLowerCase().includes(s)) return true;
+    return items.some(it => itemMatchesFilter(it, q));
+  }
+
+  async function loadData(){
+    summary.textContent = "Loading report…";
+    reportRoot.innerHTML = "";
+    const sb = getSupabase();
+
+    const [{ data: containers, error: cErr }, { data: items, error: iErr }] = await Promise.all([
+      sb.from("containers")
+        .select("container_id, ref_uid, container_code, container_description, created_at, created_by, updated_at, updated_by, is_active")
+        .eq("is_active", true)
+        .order("container_code", { ascending: true }),
+      sb.from("items")
+        .select("item_id, ref_uid, container_code, item_description, quantity, photo_path, created_at, created_by, updated_at, updated_by, is_active")
+        .eq("is_active", true)
+        .order("container_code", { ascending: true })
+        .order("created_at", { ascending: false })
+    ]);
+
+    if (cErr) throw cErr;
+    if (iErr) throw iErr;
+
+    const byContainer = new Map();
+    for (const it of items || []){
+      const code = it.container_code || "";
+      if (!byContainer.has(code)) byContainer.set(code, []);
+      byContainer.get(code).push(it);
+    }
+
+    state.containers = containers || [];
+    state.itemsByContainer = byContainer;
+  }
+
+  async function deleteItem(item){
+    if (!window.confirm(`Delete this item from ${item.container_code}?\n\n${item.item_description || "(no description)"}`)) return;
+
+    const sb = getSupabase();
+    const payload = { is_active: false };
+    if ("updated_at" in item) payload.updated_at = new Date().toISOString();
+    if ("updated_by" in item) payload.updated_by = user.id;
+
+    const { error } = await sb.from("items").update(payload).eq("item_id", item.item_id);
+    if (error) throw error;
+
+    showBanner("ok", "Item deleted.");
+    await refresh();
+  }
+
+  async function deleteContainer(container, items){
+    if (items.length){
+      showBanner("warn", `Container ${container.container_code} still has ${items.length} active item(s). Delete items first.`);
+      return;
+    }
+
+    if (!window.confirm(`Delete empty container ${container.container_code}?`)) return;
+
+    const sb = getSupabase();
+    const payload = { is_active: false };
+    if ("updated_at" in container) payload.updated_at = new Date().toISOString();
+    if ("updated_by" in container) payload.updated_by = user.id;
+
+    const { error } = await sb.from("containers").update(payload).eq("container_id", container.container_id);
+    if (error) throw error;
+
+    showBanner("ok", "Container deleted.");
+    await refresh();
+  }
+
+  async function render(){
+    const q = qEl.value.trim();
+    const thumbMode = thumbModeEl.value;
+    const sortBy = sortByEl.value;
+
+    let containers = state.containers.slice();
+
+    containers = containers.filter(c => {
+      const items = state.itemsByContainer.get(c.container_code) || [];
+      return containerMatchesFilter(c, items, q);
+    });
+
+    if (sortBy === "recent"){
+      containers.sort((a, b) => {
+        const ai = state.itemsByContainer.get(a.container_code) || [];
+        const bi = state.itemsByContainer.get(b.container_code) || [];
+        const ad = ai[0]?.created_at || a.created_at || "";
+        const bd = bi[0]?.created_at || b.created_at || "";
+        return String(bd).localeCompare(String(ad));
+      });
+    } else {
+      containers.sort((a, b) => String(a.container_code || "").localeCompare(String(b.container_code || "")));
+    }
+
+    const itemCount = containers.reduce((n, c) => {
+      const items = state.itemsByContainer.get(c.container_code) || [];
+      return n + items.filter(it => itemMatchesFilter(it, q)).length;
+    }, 0);
+
+    summary.textContent = `${containers.length} container(s), ${itemCount} item(s).`;
+    printStamp.textContent = `Printed ${new Date().toLocaleString()}`;
+
+    reportRoot.innerHTML = "";
+    if (!containers.length){
+      reportRoot.innerHTML = `<div class="empty-note">No containers match the current filter.</div>`;
+      return;
+    }
+
+    for (const container of containers){
+      const allItems = state.itemsByContainer.get(container.container_code) || [];
+      const items = allItems.filter(it => itemMatchesFilter(it, q));
+
+      const group = document.createElement("div");
+      group.className = "container-group";
+
+      const head = document.createElement("div");
+      head.className = "container-head";
+      head.innerHTML = `
+        <div>
+          <div class="container-title mono">${esc(container.container_code)}</div>
+          <div class="container-meta">
+            ${esc(container.container_description || "")}
+            ${container.container_description ? " • " : ""}
+            ${items.length} active item(s)
+          </div>
+        </div>
+        <div class="icon-row no-print">
+          <a class="icon-btn" title="Container Detail" href="container_detail.html?container_code=${encodeURIComponent(container.container_code)}">📦</a>
+          <button class="icon-btn danger-lite" title="Delete Container" data-kind="delete-container">🗑</button>
+        </div>
+      `;
+      group.appendChild(head);
+
+      if (!items.length){
+        const empty = document.createElement("div");
+        empty.className = "empty-note";
+        empty.textContent = "No matching active items in this container.";
+        group.appendChild(empty);
+      } else {
+        const table = document.createElement("table");
+        table.className = "table report-table";
+        table.innerHTML = `
+          <thead>
+            <tr>
+              <th>${thumbMode === "thumb" ? "Photo" : ""}</th>
+              <th>Description</th>
+              <th>Qty</th>
+              <th>Created</th>
+              <th class="no-print">Links</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        `;
+        const tbody = table.querySelector("tbody");
+
+        for (const item of items){
+          const tr = document.createElement("tr");
+          const thumbUrl = thumbMode === "thumb" ? await signedThumb(item.photo_path) : null;
+          tr.innerHTML = `
+            <td>${thumbMode === "thumb" ? (thumbUrl ? `<img class="thumb-sm" src="${thumbUrl}" />` : "") : ""}</td>
+            <td>${esc(item.item_description || "(no description)")}</td>
+            <td class="mono">${esc(item.quantity ?? "")}</td>
+            <td class="mono">${esc(item.created_at ? new Date(item.created_at).toLocaleString() : "")}</td>
+            <td class="no-print">
+              <div class="icon-row">
+                <a class="icon-btn" title="Item Detail" href="item_detail.html?ref_uid=${encodeURIComponent(item.ref_uid)}">🔎</a>
+                <button class="icon-btn danger-lite" title="Delete Item" data-kind="delete-item">🗑</button>
+              </div>
+            </td>
+          `;
+          tr.querySelector('[data-kind="delete-item"]').addEventListener("click", () => {
+            deleteItem(item).catch(e => showBanner("err", "Delete failed: " + (e.message || e)));
+          });
+          tbody.appendChild(tr);
+        }
+
+        group.appendChild(table);
+      }
+
+      head.querySelector('[data-kind="delete-container"]').addEventListener("click", () => {
+        deleteContainer(container, allItems).catch(e => showBanner("err", "Delete failed: " + (e.message || e)));
+      });
+
+      reportRoot.appendChild(group);
+    }
+  }
+
+  async function refresh(){
+    try{
+      await loadData();
+      await render();
+    }catch(e){
+      showBanner("err", "Load failed: " + (e.message || e));
+      summary.textContent = "";
+    }
+  }
+
+  qEl.addEventListener("input", () => { render().catch(console.error); });
+  sortByEl.addEventListener("change", () => { render().catch(console.error); });
+  thumbModeEl.addEventListener("change", () => { render().catch(console.error); });
+  btnRefresh.addEventListener("click", refresh);
+  btnPrint.addEventListener("click", () => window.print());
+
+  await refresh();
+})();
+</script>
+</body>
+</html>
