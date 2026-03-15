@@ -75,6 +75,13 @@
   const confirmProceed = document.getElementById("confirmProceed");
   let confirmResolve = null;
 
+  function currentReturnUrl(){
+    return window.location.href;
+  }
+  function itemDetailUrl(refUid){
+    return `item_detail.html?ref_uid=${encodeURIComponent(refUid)}&return=${encodeURIComponent(currentReturnUrl())}`;
+  }
+
   confirmCancel.onclick = () => {
     confirmOverlay.style.display = "none";
     if (confirmResolve) confirmResolve(false);
@@ -120,7 +127,7 @@
   btnDetail.addEventListener("click", () => {
     const code = containerCodeEl.value.trim();
     if (!code) return;
-    window.location.href = `container_detail.html?container_code=${encodeURIComponent(code)}`;
+    window.location.href = `container_detail.html?container_code=${encodeURIComponent(code)}&return=${encodeURIComponent(currentReturnUrl())}`;
   });
 
   async function signedThumb(path){
@@ -185,7 +192,7 @@
           <td class="mono">${esc(new Date(it.created_at).toLocaleString())}</td>
           <td class="no-print">
             <div class="action-stack">
-              <a class="icon-circle icon-edit" href="item_detail.html?ref_uid=${encodeURIComponent(it.ref_uid)}" title="Edit item">✎</a>
+              <a class="icon-circle icon-edit" href="${itemDetailUrl(it.ref_uid)}" title="Edit item">✎</a>
               <button class="icon-circle icon-delete" data-del-item="${esc(it.ref_uid)}" title="Delete item">✕</button>
             </div>
           </td>
