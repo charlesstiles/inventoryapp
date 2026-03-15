@@ -1,12 +1,3 @@
-<!--
-Update: Fix "Auth: checking..." hang on iOS by making navbar render non-blocking (APP_NAV.render can stall).
-Why: If APP_NAV.render never resolves, requireAuth never completes and login/capture UI never appears.
-Changes:
-  1) Wrap APP_NAV.render in a safe timeout so auth checks proceed even if nav fails.
-  2) Add simple on-page error capture (shows banner + authStatus if JS throws).
-  3) Keep singleton Supabase client usage for consistent auth headers.
-Revision: 2026-01-09.v4
--->
 <!doctype html>
 <html>
 <head>
@@ -18,67 +9,88 @@ Revision: 2026-01-09.v4
   <script src="config.js"></script>
   <script src="navigation.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/quagga@0.12.1/dist/quagga.min.js"></script>
+  <style>
+    /* Update: iPhone/Android scanner fixes, autofocus, and cleaner modal.
+       Revision: 2026-03-15.v6 */
+    #authStatus{ display:none !important; }
 
-<style>
-  /* Update: Improve iPhone scanner usability and hide debug auth banner from normal view.
-     Revision: 2026-03-15.v5 */
-  #authStatus{ display:none !important; }
-
-  .modalBackdrop{
-    position:fixed !important;
-    inset:0 !important;
-    background:rgba(0,0,0,.72) !important;
-    display:none;
-    align-items:center !important;
-    justify-content:center !important;
-    z-index:9999 !important;
-    padding:16px !important;
-  }
-  .modal{
-    width:min(760px,96vw) !important;
-    max-height:92vh !important;
-    overflow:auto !important;
-    background:var(--card2,#0d1628) !important;
-    border:1px solid var(--border,#22314f) !important;
-    border-radius:16px !important;
-    box-shadow:0 12px 32px rgba(0,0,0,.35) !important;
-  }
-  .modalHeader{ padding:14px 16px !important; }
-  .modalBody{ padding:14px 16px 18px !important; }
-  .videoBox{
-    border-radius:14px !important;
-    overflow:hidden !important;
-    border:1px solid rgba(255,255,255,.12) !important;
-    background:#000 !important;
-    position:relative !important;
-    min-height:280px !important;
-  }
-  #scanner{
-    width:100% !important;
-    min-height:280px !important;
-  }
-  #scanner video, #scanner canvas,
-  .videoBox video, .videoBox canvas{
-    width:100% !important;
-    height:46vh !important;
-    min-height:280px !important;
-    object-fit:cover !important;
-    display:block !important;
-  }
-  .scanHint{
-    position:absolute !important;
-    inset:18% 12% !important;
-    border:2px solid rgba(255,255,255,.85) !important;
-    border-radius:14px !important;
-    box-shadow:0 0 0 2000px rgba(0,0,0,.24) inset !important;
-    pointer-events:none !important;
-    z-index:5 !important;
-  }
-  .scanSectionNote{
-    padding-left:4px;
-  }
-</style>
-
+    .modalBackdrop{
+      position:fixed !important;
+      inset:0 !important;
+      background:rgba(0,0,0,.72) !important;
+      display:none;
+      align-items:center !important;
+      justify-content:center !important;
+      z-index:9999 !important;
+      padding:16px !important;
+    }
+    .modal{
+      width:min(760px,96vw) !important;
+      max-height:92vh !important;
+      overflow:auto !important;
+      background:var(--card2,#0d1628) !important;
+      border:1px solid var(--border,#22314f) !important;
+      border-radius:16px !important;
+      box-shadow:0 12px 32px rgba(0,0,0,.35) !important;
+    }
+    .modalHeader{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:10px;
+      padding:14px 16px !important;
+      border-bottom:1px solid rgba(255,255,255,.08);
+    }
+    .modalBody{ padding:14px 16px 18px !important; }
+    .videoBox{
+      position:relative !important;
+      width:100% !important;
+      height:320px !important;
+      min-height:320px !important;
+      overflow:hidden !important;
+      background:#000 !important;
+      border-radius:14px !important;
+      border:1px solid rgba(255,255,255,.12) !important;
+    }
+    #scanner{
+      width:100% !important;
+      height:100% !important;
+      min-height:320px !important;
+    }
+    #scanner video,
+    #scanner canvas,
+    .videoBox video,
+    .videoBox canvas{
+      width:100% !important;
+      height:100% !important;
+      object-fit:cover !important;
+      display:block !important;
+    }
+    .scanHint{
+      position:absolute !important;
+      top:38% !important;
+      left:10% !important;
+      width:80% !important;
+      height:24% !important;
+      border:2px solid rgba(255,255,255,.85) !important;
+      border-radius:12px !important;
+      box-shadow:0 0 0 2000px rgba(0,0,0,.25) inset !important;
+      pointer-events:none !important;
+      z-index:5 !important;
+    }
+    .scanSectionNote{
+      padding-left:4px;
+      margin-top:10px;
+    }
+    @media (orientation: landscape){
+      .scanHint{
+        top:18% !important;
+        left:36% !important;
+        width:28% !important;
+        height:64% !important;
+      }
+    }
+  </style>
 </head>
 <body>
   <div class="page">
@@ -89,12 +101,10 @@ Revision: 2026-01-09.v4
     <div class="card">
       <h1>Inventory Capture</h1>
 
-      <!-- AUTH STATUS (mobile-friendly visibility) -->
       <div id="authStatus" style="font:12px/1.3 system-ui; padding:6px 10px; background:#fff3cd; border:1px solid #ffeeba; border-radius:6px; margin:8px 0;">
         Auth: checking...
       </div>
 
-      <!-- LOGIN -->
       <div id="loginBox" style="display:none;">
         <label>Email</label>
         <input id="email" type="email" placeholder="you@example.com" />
@@ -105,7 +115,6 @@ Revision: 2026-01-09.v4
         <div class="small-note">Sign-in is required before capture/search/container access.</div>
       </div>
 
-      <!-- CAPTURE -->
       <div id="captureBox" style="display:none;">
         <label>Container Code</label>
         <div class="row">
@@ -135,7 +144,6 @@ Revision: 2026-01-09.v4
     </div>
   </div>
 
-  <!-- Scan Modal -->
   <div class="modalBackdrop" id="scanModal">
     <div class="modal">
       <div class="modalHeader">
@@ -166,9 +174,22 @@ Revision: 2026-01-09.v4
   const scanModal = document.getElementById("scanModal");
   const containerCodeEl = document.getElementById("containerCode");
   const containerSetNote = document.getElementById("containerSetNote");
+  const photoEl = document.getElementById("photo");
+  const descEl = document.getElementById("desc");
+  const qtyEl = document.getElementById("qty");
+  const emailEl = document.getElementById("email");
+  const passwordEl = document.getElementById("password");
 
-  // SINGLE client for the page
   const sb = getSupabase();
+
+  function focusContainerField(){
+    setTimeout(() => {
+      if(containerCodeEl){
+        containerCodeEl.focus();
+        containerCodeEl.select();
+      }
+    }, 150);
+  }
 
   function setAuthStatus(msg){
     if (authStatusEl) authStatusEl.textContent = msg;
@@ -187,35 +208,30 @@ Revision: 2026-01-09.v4
     setTimeout(() => banner.style.display = "none", 6500);
   }
 
-  // Show JS errors on-screen (mobile-safe)
   window.addEventListener("error", (evt) => {
     const msg = evt?.message || "Unknown script error";
-    setAuthStatus("Auth: error (see banner)");
+    setAuthStatus("Auth: error");
     showBanner("err", "Script error: " + msg);
   });
 
   window.addEventListener("unhandledrejection", (evt) => {
     const msg = evt?.reason?.message || String(evt?.reason || "Unknown promise rejection");
-    setAuthStatus("Auth: error (see banner)");
+    setAuthStatus("Auth: error");
     showBanner("err", "Unhandled: " + msg);
   });
 
   function code39FullAsciiNormalize(raw){
     if (!raw) return raw;
-    let out = "";
-    for (let i=0; i<raw.length; i++){
-      const ch = raw[i];
-      if (ch === "+" && i+1 < raw.length){
-        const next = raw[i+1];
+    let out = String(raw).replace(/\*/g, "");
+    for (let i=0; i<out.length; i++){
+      if (out[i] === "+" && i+1 < out.length){
+        const next = out[i+1];
         if (next >= "A" && next <= "Z"){
-          out += next.toLowerCase();
-          i++;
-          continue;
+          out = out.slice(0,i) + next.toLowerCase() + out.slice(i+2);
         }
       }
-      out += ch;
     }
-    return out;
+    return out.trim();
   }
 
   async function renderNavSafe(timeoutMs = 1200){
@@ -226,202 +242,139 @@ Revision: 2026-01-09.v4
         new Promise((res) => setTimeout(res, timeoutMs))
       ]);
     }catch(e){
-      // Do not block auth/UI if nav rendering fails
       console.warn("Nav render failed:", e);
     }
-  }
-
-  async function waitForSession(maxMs = 2500){
-    const start = Date.now();
-    while (Date.now() - start < maxMs){
-      const { data: { session } } = await sb.auth.getSession();
-      if (session?.user) return session;
-      await new Promise(r => setTimeout(r, 150));
-    }
-    return null;
   }
 
   async function requireAuth(){
     setSaveEnabled(false);
     setAuthStatus("Auth: checking...");
-
-    // ✅ Do NOT let nav rendering stall auth/UI
     await renderNavSafe(1200);
 
-    const session = await waitForSession(2500);
+    const { data: { session } } = await sb.auth.getSession();
     if (session?.user){
+      loginBox.style.display = "none";
+      captureBox.style.display = "block";
       setAuthStatus("Auth: OK");
       setSaveEnabled(true);
+      focusContainerField();
       return session.user;
     }
 
-    const { data, error } = await sb.auth.getUser();
-    if (!error && data?.user){
-      setAuthStatus("Auth: OK");
-      setSaveEnabled(true);
-      return data.user;
-    }
-
-    setAuthStatus("Auth: NOT logged in. Please sign in.");
+    loginBox.style.display = "block";
+    captureBox.style.display = "none";
+    setAuthStatus("Auth: sign in required");
     return null;
   }
 
-  async function init(){
-    const user = await requireAuth();
-    if (!user){
-      loginBox.style.display = "block";
-      captureBox.style.display = "none";
-      return;
-    }
-    loginBox.style.display = "none";
-    captureBox.style.display = "block";
-  }
-
-  btnLogin.addEventListener("click", async () => {
+  async function login(){
     try{
-      const email = document.getElementById("email").value.trim();
-      const password = document.getElementById("password").value;
-
+      const email = emailEl.value.trim();
+      const password = passwordEl.value;
+      if (!email || !password){
+        showBanner("err", "Enter email and password.");
+        return;
+      }
       setAuthStatus("Auth: signing in...");
       const { error } = await sb.auth.signInWithPassword({ email, password });
       if (error) throw error;
-
-      showBanner("ok", "Login successful ✅");
-      await init();
+      showBanner("ok", "Login successful.");
+      await requireAuth();
     }catch(e){
-      setAuthStatus("Auth: NOT logged in. Please sign in.");
+      setAuthStatus("Auth: login failed");
       showBanner("err", "Login failed: " + (e.message || e));
-      setSaveEnabled(false);
     }
-  });
+  }
 
-  async function ensureActiveContainer(container_code){
-    let { data: existing, error } = await sb
-      .from("containers")
-      .select("container_id, ref_uid, container_code, is_active")
-      .eq("container_code", container_code)
-      .eq("is_active", true)
+  async function ensureContainer(code){
+    let {data,error}=await sb.from("containers")
+      .select("container_code")
+      .eq("container_code",code)
+      .eq("is_active",true)
       .maybeSingle();
-
-    if (error) throw error;
-    if (existing) return existing;
-
-    const { data: { session } } = await sb.auth.getSession();
-    if (!session?.user) throw new Error("Not logged in (session missing). Please sign in again.");
-
-    let { data: created, error: insErr } = await sb
-      .from("containers")
-      .insert([{ container_code }])
-      .select("container_id, ref_uid, container_code, is_active")
-      .single();
-
-    if (insErr) throw insErr;
-
-    if (!created.ref_uid){
-      const { data: upd, error: updErr } = await sb
-        .from("containers")
-        .update({ ref_uid: created.container_id })
-        .eq("container_id", created.container_id)
-        .select("container_id, ref_uid, container_code, is_active")
-        .single();
-      if (updErr) throw updErr;
-      created = upd;
-    }
-
-    const returnUrl = encodeURIComponent("capture.html");
-    window.location.href = `container_detail.html?ref_uid=${encodeURIComponent(created.ref_uid)}&return=${returnUrl}`;
-    return created;
+    if(error) throw error;
+    if(data) return;
+    const { error: insErr } = await sb.from("containers").insert([{container_code:code}]);
+    if(insErr) throw insErr;
   }
 
-  async function compressImageToJpeg(file, maxDim=1024, quality=0.72){
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    await new Promise((res, rej) => { img.onload=res; img.onerror=rej; img.src=url; });
-
-    const w = img.width, h = img.height;
-    const scale = Math.min(1, maxDim / Math.max(w,h));
-    const nw = Math.round(w*scale);
-    const nh = Math.round(h*scale);
-
-    const canvas = document.createElement("canvas");
-    canvas.width = nw;
-    canvas.height = nh;
-    canvas.getContext("2d").drawImage(img, 0, 0, nw, nh);
-
-    const blob = await new Promise((res) => canvas.toBlob(res, "image/jpeg", quality));
-    URL.revokeObjectURL(url);
-    return blob;
-  }
-
-  btnSave.addEventListener("click", async () => {
+  async function saveItem(){
     try{
-      const user = await requireAuth();
-      if (!user) { showBanner("err","Please sign in."); return; }
-
-      const container_code = containerCodeEl.value.trim();
-      if (!container_code) { showBanner("err","Container Code is required."); return; }
-
-      const photoFile = document.getElementById("photo").files?.[0];
-      if (!photoFile) { showBanner("err","Photo is required."); return; }
-
-      const item_description = document.getElementById("desc").value.trim();
-      const quantity = Number(document.getElementById("qty").value || 1);
-
-      setAuthStatus("Auth: OK (saving...)");
-
-      await ensureActiveContainer(container_code);
-
       const { data: { session } } = await sb.auth.getSession();
-      if (!session?.user) throw new Error("Not logged in (session missing). Please sign in again.");
-
-      let { data: item, error: insErr } = await sb
-        .from("items")
-        .insert([{ container_code, item_description, quantity }])
-        .select("item_id, ref_uid, container_code, item_description, quantity, is_active")
-        .single();
-
-      if (insErr) throw insErr;
-
-      if (!item.ref_uid){
-        const { data: updItem, error: updErr } = await sb
-          .from("items")
-          .update({ ref_uid: item.item_id })
-          .eq("item_id", item.item_id)
-          .select("item_id, ref_uid, container_code, item_description, quantity, is_active")
-          .single();
-        if (updErr) throw updErr;
-        item = updItem;
+      if (!session?.user){
+        showBanner("err", "Please sign in first.");
+        await requireAuth();
+        return;
       }
 
-      const jpegBlob = await compressImageToJpeg(photoFile, 1024, 0.72);
-      const path = `items/${item.ref_uid}/${item.item_id}.jpg`;
+      const container = String(containerCodeEl.value || "").trim().toUpperCase();
+      const photo = photoEl.files?.[0];
+      const desc = descEl.value.trim();
+      const qty = Number(qtyEl.value || 1);
 
+      if (!container){
+        showBanner("err", "Container Code required.");
+        focusContainerField();
+        return;
+      }
+      if (!photo){
+        showBanner("err", "Photo required.");
+        return;
+      }
+      if (!desc){
+        showBanner("err", "Description required.");
+        return;
+      }
+
+      setSaveEnabled(false);
+      await ensureContainer(container);
+
+      const ref_uid = crypto.randomUUID();
+      const item_id = crypto.randomUUID();
+
+      const photoPath = `items/${ref_uid}/${item_id}.jpg`;
       const { error: upErr } = await sb.storage
         .from("item-photos")
-        .upload(path, jpegBlob, { contentType: "image/jpeg", upsert: true });
+        .upload(photoPath, photo, { upsert: true });
 
       if (upErr) throw upErr;
 
-      const { error: savePathErr } = await sb
+      const { error: insErr } = await sb
         .from("items")
-        .update({ photo_path: path })
-        .eq("item_id", item.item_id);
+        .insert([{
+          item_id,
+          ref_uid,
+          container_code: container,
+          item_description: desc,
+          quantity: qty,
+          photo_path: photoPath,
+          is_active: true,
+          created_by: session.user.id,
+          updated_by: session.user.id
+        }]);
 
-      if (savePathErr) throw savePathErr;
+      if (insErr) throw insErr;
 
-      showBanner("ok", "Saved ✅");
-      setAuthStatus("Auth: OK");
-
-      document.getElementById("photo").value = "";
-      document.getElementById("desc").value = "";
-      document.getElementById("qty").value = "1";
+      descEl.value = "";
+      photoEl.value = "";
+      qtyEl.value = "1";
+      containerSetNote.textContent = `Container set: ${container}`;
+      focusContainerField();
+      showBanner("ok", `Saved item to ${container}`);
     }catch(e){
-      setAuthStatus("Auth: error (see banner)");
       showBanner("err", "Save failed: " + (e.message || e));
+    }finally{
+      setSaveEnabled(true);
     }
-  });
+  }
 
-  // ------- Scanner (Quagga) -------
+  function closeScan(){
+    scanModal.style.display = "none";
+    document.body.style.overflow = "";
+    try { Quagga.offDetected(); } catch(e) {}
+    try { Quagga.stop(); } catch(e) {}
+  }
+
   function openScan(){
     scanModal.style.display = "flex";
     document.body.style.overflow = "hidden";
@@ -430,24 +383,27 @@ Revision: 2026-01-09.v4
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
     showBanner("ok", "Camera opened. Aim the barcode inside the white box.");
 
+    try { Quagga.offDetected(); } catch(e) {}
+    try { Quagga.stop(); } catch(e) {}
+
     Quagga.init({
       inputStream: {
         type: "LiveStream",
         target: target,
         constraints: {
-          facingMode: { ideal: "environment" },
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
-          aspectRatio: { ideal: 1.7777778 }
+          facingMode: "environment",
+          width: { min: 640, ideal: 1280, max: 1920 },
+          height: { min: 480, ideal: 720, max: 1080 },
+          aspectRatio: { ideal: 1.777 }
         },
         area: { top:"18%", right:"10%", left:"10%", bottom:"18%" }
       },
       locator: {
-        patchSize: "medium",
+        patchSize: "large",
         halfSample: false
       },
       numOfWorkers: isIOS ? 0 : 2,
-      frequency: 10,
+      frequency: 6,
       decoder: { readers: ["code_39_reader"] },
       locate: true
     }, (err) => {
@@ -459,30 +415,35 @@ Revision: 2026-01-09.v4
       Quagga.start();
     });
 
-    Quagga.offDetected();
     Quagga.onDetected((res) => {
       const raw = res?.codeResult?.code;
       if (!raw) return;
       const normalized = code39FullAsciiNormalize(raw);
+      if (!normalized) return;
 
-      containerCodeEl.value = normalized;
-      containerSetNote.textContent = `Container set: ${normalized}`;
-      showBanner("ok", `Scanned: ${normalized}`);
+      containerCodeEl.value = normalized.toUpperCase();
+      containerSetNote.textContent = `Container set: ${normalized.toUpperCase()}`;
+      showBanner("ok", `Scanned: ${normalized.toUpperCase()}`);
       closeScan();
       focusContainerField();
     });
   }
 
-  function closeScan(){
-    scanModal.style.display = "none";
-    document.body.style.overflow = "";
-    try { Quagga.stop(); } catch(e) {}
-  }
+  btnLogin?.addEventListener("click", login);
+  btnSave?.addEventListener("click", saveItem);
+  btnScanContainer?.addEventListener("click", openScan);
+  btnCloseScan?.addEventListener("click", closeScan);
 
-  btnScanContainer.addEventListener("click", openScan);
-  btnCloseScan.addEventListener("click", closeScan);
+  containerCodeEl?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter"){
+      e.preventDefault();
+      photoEl.focus();
+    }
+  });
 
-  init();
+  document.addEventListener("DOMContentLoaded", focusContainerField);
+
+  requireAuth();
 })();
 </script>
 </body>
