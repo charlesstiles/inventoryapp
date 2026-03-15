@@ -1,130 +1,429 @@
+<!--
+Update: Fix "Auth: checking..." hang on iOS by making navbar render non-blocking (APP_NAV.render can stall).
+Why: If APP_NAV.render never resolves, requireAuth never completes and login/capture UI never appears.
+Changes:
+  1) Wrap APP_NAV.render in a safe timeout so auth checks proceed even if nav fails.
+  2) Add simple on-page error capture (shows banner + authStatus if JS throws).
+  3) Keep singleton Supabase client usage for consistent auth headers.
+Revision: 2026-01-09.v4
+-->
 <!doctype html>
 <html>
 <head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Inventory Capture</title>
-<link rel="stylesheet" href="styles.css" />
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="config.js"></script>
-<script src="navigation.js"></script>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Inventory Capture</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script src="navigation.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/quagga@0.12.1/dist/quagga.min.js"></script>
 </head>
 <body>
-<div class="page">
-  <div id="navBar"></div>
-  <div class="card">
+  <div class="page">
+    <div id="navBar"></div>
+
     <div id="banner" class="banner" style="display:none;"></div>
-    <h1>Inventory Capture</h1>
 
-    <label>Container Code</label>
-    <input id="containerCode" placeholder="TOTE0001"/>
+    <div class="card">
+      <h1>Inventory Capture</h1>
 
-    <label>Description</label>
-    <textarea id="desc" placeholder="Item description"></textarea>
+      <!-- AUTH STATUS (mobile-friendly visibility) -->
+      <div id="authStatus" style="font:12px/1.3 system-ui; padding:6px 10px; background:#fff3cd; border:1px solid #ffeeba; border-radius:6px; margin:8px 0;">
+        Auth: checking...
+      </div>
 
-    <label>Photo (optional)</label>
-    <input id="photo" type="file" accept="image/*"/>
+      <!-- LOGIN -->
+      <div id="loginBox" style="display:none;">
+        <label>Email</label>
+        <input id="email" type="email" placeholder="you@example.com" />
+        <label>Password</label>
+        <input id="password" type="password" placeholder="••••••••" />
+        <div class="hr"></div>
+        <button class="btn" id="btnLogin">Sign In</button>
+        <div class="small-note">Sign-in is required before capture/search/container access.</div>
+      </div>
 
-    <label>Quantity</label>
-    <input id="qty" type="number" value="1"/>
+      <!-- CAPTURE -->
+      <div id="captureBox" style="display:none;">
+        <label>Container Code</label>
+        <div class="row">
+          <input id="containerCode" type="text" placeholder="e.g. TOTE0076" />
+          <button class="btn secondary" id="btnScanContainer" style="max-width:180px;">Scan</button>
+        </div>
+        <div class="small-note" id="containerSetNote"></div>
 
-    <div class="row" style="margin-top:8px;">
-      <button id="saveBtn" class="btn" style="max-width:220px;">Save Item</button>
-      <button id="viewContainerBtn" class="btn secondary" style="max-width:220px;display:none;">View Container</button>
+        <label>Photo (required)</label>
+        <input id="photo" type="file" accept="image/*" capture="environment" />
+
+        <label>Description</label>
+        <textarea id="desc" placeholder="Item description"></textarea>
+
+        <div class="row">
+          <div>
+            <label>Quantity</label>
+            <input id="qty" type="number" step="0.1" value="1" />
+          </div>
+          <div></div>
+        </div>
+
+        <div class="hr"></div>
+        <button class="btn" id="btnSave">Save Item</button>
+        <div class="small-note">After save, the form stays ready for the next item in the same container.</div>
+      </div>
     </div>
-
-    <div class="small-note">Provide a description, a photo, or both.</div>
   </div>
-</div>
+
+  <!-- Scan Modal -->
+  <div class="modalBackdrop" id="scanModal">
+    <div class="modal">
+      <div class="modalHeader">
+        <h3>Scan Code 39 Container Label</h3>
+        <button class="btn secondary" id="btnCloseScan" style="width:auto;">Close</button>
+      </div>
+      <div class="modalBody">
+        <div class="videoBox">
+          <div class="scanHint"></div>
+          <div id="scanner"></div>
+        </div>
+        <div class="small-note">Tip: hold steady ~8–14 inches away. Align the barcode within the box.</div>
+      </div>
+    </div>
+  </div>
 
 <script>
-const sb = getSupabase();
-const banner=document.getElementById("banner");
-const containerCode=document.getElementById("containerCode");
-const descEl=document.getElementById("desc");
-const photoEl=document.getElementById("photo");
-const qtyEl=document.getElementById("qty");
-const saveBtn=document.getElementById("saveBtn");
-const viewBtn=document.getElementById("viewContainerBtn");
-let lastContainer=null;
+(function(){
+  const banner = document.getElementById("banner");
+  const loginBox = document.getElementById("loginBox");
+  const captureBox = document.getElementById("captureBox");
+  const authStatusEl = document.getElementById("authStatus");
 
-function showBanner(type,msg){
-  banner.className="banner "+type;
-  banner.textContent=msg;
-  banner.style.display="block";
-  setTimeout(()=>banner.style.display="none",5000);
-}
-function normalizeContainer(code){ return String(code||"").trim().toUpperCase(); }
+  const btnLogin = document.getElementById("btnLogin");
+  const btnSave = document.getElementById("btnSave");
+  const btnScanContainer = document.getElementById("btnScanContainer");
+  const btnCloseScan = document.getElementById("btnCloseScan");
+  const scanModal = document.getElementById("scanModal");
+  const containerCodeEl = document.getElementById("containerCode");
 
-async function requireAuth(){
-  await APP_NAV.render("navBar");
-  const { data } = await sb.auth.getUser();
-  if (!data?.user){
-    window.location.href = "index.html";
+  // --- Auto-focus for barcode scanning workflow ---
+  function focusContainerField(){
+    setTimeout(() => {
+      if(containerCodeEl){
+        containerCodeEl.focus();
+        containerCodeEl.select();
+      }
+    },150);
+  }
+
+  document.addEventListener("DOMContentLoaded", focusContainerField);
+
+  const containerSetNote = document.getElementById("containerSetNote");
+
+  // SINGLE client for the page
+  const sb = getSupabase();
+
+  function setAuthStatus(msg){
+    if (authStatusEl) authStatusEl.textContent = msg;
+  }
+
+  function setSaveEnabled(enabled){
+    btnSave.disabled = !enabled;
+    btnSave.style.opacity = enabled ? "1" : "0.6";
+    btnSave.style.pointerEvents = enabled ? "auto" : "none";
+  }
+
+  function showBanner(type, msg){
+    banner.className = "banner " + (type || "ok");
+    banner.textContent = msg;
+    banner.style.display = "block";
+    setTimeout(() => banner.style.display = "none", 6500);
+  }
+
+  // Show JS errors on-screen (mobile-safe)
+  window.addEventListener("error", (evt) => {
+    const msg = evt?.message || "Unknown script error";
+    setAuthStatus("Auth: error (see banner)");
+    showBanner("err", "Script error: " + msg);
+  });
+
+  window.addEventListener("unhandledrejection", (evt) => {
+    const msg = evt?.reason?.message || String(evt?.reason || "Unknown promise rejection");
+    setAuthStatus("Auth: error (see banner)");
+    showBanner("err", "Unhandled: " + msg);
+  });
+
+  function code39FullAsciiNormalize(raw){
+    if (!raw) return raw;
+    let out = "";
+    for (let i=0; i<raw.length; i++){
+      const ch = raw[i];
+      if (ch === "+" && i+1 < raw.length){
+        const next = raw[i+1];
+        if (next >= "A" && next <= "Z"){
+          out += next.toLowerCase();
+          i++;
+          continue;
+        }
+      }
+      out += ch;
+    }
+    return out;
+  }
+
+  async function renderNavSafe(timeoutMs = 1200){
+    try{
+      if (!window.APP_NAV || typeof window.APP_NAV.render !== "function") return;
+      await Promise.race([
+        window.APP_NAV.render("navBar"),
+        new Promise((res) => setTimeout(res, timeoutMs))
+      ]);
+    }catch(e){
+      // Do not block auth/UI if nav rendering fails
+      console.warn("Nav render failed:", e);
+    }
+  }
+
+  async function waitForSession(maxMs = 2500){
+    const start = Date.now();
+    while (Date.now() - start < maxMs){
+      const { data: { session } } = await sb.auth.getSession();
+      if (session?.user) return session;
+      await new Promise(r => setTimeout(r, 150));
+    }
     return null;
   }
-  return data.user;
-}
 
-async function ensureContainer(code){
-  let {data,error}=await sb.from("containers")
-    .select("container_code")
-    .eq("container_code",code)
-    .eq("is_active",true)
-    .maybeSingle();
-  if(error) throw error;
-  if(data) return;
-  const { error: insErr } = await sb.from("containers").insert([{container_code:code}]);
-  if(insErr) throw insErr;
-}
+  async function requireAuth(){
+    setSaveEnabled(false);
+    setAuthStatus("Auth: checking...");
 
-async function saveItem(){
-  const container=normalizeContainer(containerCode.value);
-  const desc=descEl.value.trim();
-  const qty=Number(qtyEl.value||1);
-  const photo=photoEl.files[0];
+    // ✅ Do NOT let nav rendering stall auth/UI
+    await renderNavSafe(1200);
 
-  if(!container){ showBanner("err","Container code required"); return; }
-  if(!photo && !desc){ showBanner("err","Add a photo or description"); return; }
+    const session = await waitForSession(2500);
+    if (session?.user){
+      setAuthStatus("Auth: OK");
+      setSaveEnabled(true);
+      return session.user;
+    }
 
-  await ensureContainer(container);
+    const { data, error } = await sb.auth.getUser();
+    if (!error && data?.user){
+      setAuthStatus("Auth: OK");
+      setSaveEnabled(true);
+      return data.user;
+    }
 
-  const item_id=crypto.randomUUID();
-  let photo_path=null;
-
-  if(photo){
-    photo_path=`items/${item_id}.jpg`;
-    const {error:uploadErr}=await sb.storage.from("item-photos").upload(photo_path,photo);
-    if(uploadErr) throw uploadErr;
+    setAuthStatus("Auth: NOT logged in. Please sign in.");
+    return null;
   }
 
-  const {error}=await sb.from("items").insert([{
-    item_id:item_id,
-    ref_uid:item_id,
-    container_code:container,
-    item_description:desc,
-    quantity:qty,
-    photo_path:photo_path
-  }]);
-  if(error) throw error;
+  async function init(){
+    const user = await requireAuth();
+    if (!user){
+      loginBox.style.display = "block";
+      captureBox.style.display = "none";
+      return;
+    }
+    loginBox.style.display = "none";
+    captureBox.style.display = "block";
+  }
 
-  lastContainer=container;
-  showBanner("ok","✓ Item saved to "+container);
-  viewBtn.style.display="inline-flex";
-  descEl.value="";
-  photoEl.value="";
-  qtyEl.value="1";
-  descEl.focus();
-}
+  btnLogin.addEventListener("click", async () => {
+    try{
+      const email = document.getElementById("email").value.trim();
+      const password = document.getElementById("password").value;
 
-viewBtn.addEventListener("click",()=>{
-  if(!lastContainer) return;
-  window.location.href="container_detail.html?container_code="+encodeURIComponent(lastContainer);
-});
+      setAuthStatus("Auth: signing in...");
+      const { error } = await sb.auth.signInWithPassword({ email, password });
+      if (error) throw error;
 
-saveBtn.addEventListener("click",()=>saveItem().catch(e=>showBanner("err","Save failed: "+(e.message||e))));
+      showBanner("ok", "Login successful ✅");
+      await init();
+    }catch(e){
+      setAuthStatus("Auth: NOT logged in. Please sign in.");
+      showBanner("err", "Login failed: " + (e.message || e));
+      setSaveEnabled(false);
+    }
+  });
 
-requireAuth();
+  async function ensureActiveContainer(container_code){
+    let { data: existing, error } = await sb
+      .from("containers")
+      .select("container_id, ref_uid, container_code, is_active")
+      .eq("container_code", container_code)
+      .eq("is_active", true)
+      .maybeSingle();
+
+    if (error) throw error;
+    if (existing) return existing;
+
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session?.user) throw new Error("Not logged in (session missing). Please sign in again.");
+
+    let { data: created, error: insErr } = await sb
+      .from("containers")
+      .insert([{ container_code }])
+      .select("container_id, ref_uid, container_code, is_active")
+      .single();
+
+    if (insErr) throw insErr;
+
+    if (!created.ref_uid){
+      const { data: upd, error: updErr } = await sb
+        .from("containers")
+        .update({ ref_uid: created.container_id })
+        .eq("container_id", created.container_id)
+        .select("container_id, ref_uid, container_code, is_active")
+        .single();
+      if (updErr) throw updErr;
+      created = upd;
+    }
+
+    const returnUrl = encodeURIComponent("capture.html");
+    window.location.href = `container_detail.html?ref_uid=${encodeURIComponent(created.ref_uid)}&return=${returnUrl}`;
+    return created;
+  }
+
+  async function compressImageToJpeg(file, maxDim=1024, quality=0.72){
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    await new Promise((res, rej) => { img.onload=res; img.onerror=rej; img.src=url; });
+
+    const w = img.width, h = img.height;
+    const scale = Math.min(1, maxDim / Math.max(w,h));
+    const nw = Math.round(w*scale);
+    const nh = Math.round(h*scale);
+
+    const canvas = document.createElement("canvas");
+    canvas.width = nw;
+    canvas.height = nh;
+    canvas.getContext("2d").drawImage(img, 0, 0, nw, nh);
+
+    const blob = await new Promise((res) => canvas.toBlob(res, "image/jpeg", quality));
+    URL.revokeObjectURL(url);
+    return blob;
+  }
+
+  btnSave.addEventListener("click", async () => {
+    try{
+      const user = await requireAuth();
+      if (!user) { showBanner("err","Please sign in."); return; }
+
+      const container_code = containerCodeEl.value.trim();
+      if (!container_code) { showBanner("err","Container Code is required."); return; }
+
+      const photoFile = document.getElementById("photo").files?.[0];
+      if (!photoFile) { showBanner("err","Photo is required."); return; }
+
+      const item_description = document.getElementById("desc").value.trim();
+      const quantity = Number(document.getElementById("qty").value || 1);
+
+      setAuthStatus("Auth: OK (saving...)");
+
+      await ensureActiveContainer(container_code);
+
+      const { data: { session } } = await sb.auth.getSession();
+      if (!session?.user) throw new Error("Not logged in (session missing). Please sign in again.");
+
+      let { data: item, error: insErr } = await sb
+        .from("items")
+        .insert([{ container_code, item_description, quantity }])
+        .select("item_id, ref_uid, container_code, item_description, quantity, is_active")
+        .single();
+
+      if (insErr) throw insErr;
+
+      if (!item.ref_uid){
+        const { data: updItem, error: updErr } = await sb
+          .from("items")
+          .update({ ref_uid: item.item_id })
+          .eq("item_id", item.item_id)
+          .select("item_id, ref_uid, container_code, item_description, quantity, is_active")
+          .single();
+        if (updErr) throw updErr;
+        item = updItem;
+      }
+
+      const jpegBlob = await compressImageToJpeg(photoFile, 1024, 0.72);
+      const path = `items/${item.ref_uid}/${item.item_id}.jpg`;
+
+      const { error: upErr } = await sb.storage
+        .from("item-photos")
+        .upload(path, jpegBlob, { contentType: "image/jpeg", upsert: true });
+
+      if (upErr) throw upErr;
+
+      const { error: savePathErr } = await sb
+        .from("items")
+        .update({ photo_path: path })
+        .eq("item_id", item.item_id);
+
+      if (savePathErr) throw savePathErr;
+
+      showBanner("ok", "Saved ✅");
+      setAuthStatus("Auth: OK");
+
+      document.getElementById("photo").value = "";
+      document.getElementById("desc").value = "";
+      document.getElementById("qty").value = "1";
+    }catch(e){
+      setAuthStatus("Auth: error (see banner)");
+      showBanner("err", "Save failed: " + (e.message || e));
+    }
+  });
+
+  // ------- Scanner (Quagga) -------
+  function openScan(){
+    scanModal.style.display = "flex";
+    const target = document.getElementById("scanner");
+    target.innerHTML = "";
+
+    Quagga.init({
+      inputStream: {
+        type: "LiveStream",
+        target: target,
+        constraints: {
+          facingMode: "environment",
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        },
+        area: { top:"20%", right:"10%", left:"10%", bottom:"20%" }
+      },
+      decoder: { readers: ["code_39_reader"] },
+      locate: true
+    }, (err) => {
+      if (err) {
+        showBanner("err", "Scanner init failed: " + (err.message || err));
+        closeScan();
+        return;
+      }
+      Quagga.start();
+    });
+
+    Quagga.offDetected();
+    Quagga.onDetected((res) => {
+      const raw = res?.codeResult?.code;
+      if (!raw) return;
+      const normalized = code39FullAsciiNormalize(raw);
+
+      containerCodeEl.value = normalized;
+      containerSetNote.textContent = `Container set: ${normalized}`;
+      showBanner("ok", `Scanned: ${normalized}`);
+      closeScan();
+    });
+  }
+
+  function closeScan(){
+    scanModal.style.display = "none";
+    try { Quagga.stop(); } catch(e) {}
+  }
+
+  btnScanContainer.addEventListener("click", openScan);
+  btnCloseScan.addEventListener("click", closeScan);
+
+  init();
+})();
 </script>
 </body>
 </html>
