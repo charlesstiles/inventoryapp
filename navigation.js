@@ -1,5 +1,5 @@
-// Update: Unified floating navigation across the app, including Report, with fixed top-right menu button.
-// Revision: 2026-03-15.v2
+// Update: Unified floating navigation across the app.
+// Revision: 2026-03-15.v3
 (function(){
   function qs(id){ return document.getElementById(id); }
 
@@ -26,7 +26,7 @@
           <button id="navLogout" class="danger">Logout</button>
         ` : `
           <a href="index.html">Home</a>
-          <a href="capture.html">Sign In</a>
+          <a href="index.html">Sign In</a>
           <div class="muted">Sign in to access app features.</div>
         `}
       </div>
@@ -37,18 +37,13 @@
     const btn = qs("navBtn");
     const menu = qs("navMenu");
     if(!btn || !menu) return;
-
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
       menu.style.display = (menu.style.display === "none") ? "block" : "none";
     });
-
     document.addEventListener("click", (e) => {
-      if (!menu.contains(e.target) && e.target !== btn) {
-        menu.style.display = "none";
-      }
+      if (!menu.contains(e.target) && e.target !== btn) menu.style.display = "none";
     });
-
     window.addEventListener("keydown", (e) => {
       if (e.key === "Escape") menu.style.display = "none";
     });
