@@ -1,0 +1,204 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Inventory App</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <style>
+    .home-wrap{max-width:980px;margin:0 auto;padding:24px}
+    .hero{
+      background:#fff;border-radius:16px;padding:24px;margin-bottom:18px;
+      box-shadow:0 2px 12px rgba(0,0,0,.06)
+    }
+    .hero h1{margin:0 0 6px 0}
+    .hero p{margin:0;color:#555}
+    .auth-box,.dash-box{
+      background:#fff;border-radius:16px;padding:24px;
+      box-shadow:0 2px 12px rgba(0,0,0,.06)
+    }
+    .grid{
+      display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-top:10px
+    }
+    .app-card{
+      display:block;text-decoration:none;color:inherit;background:#fafafa;border:1px solid #e7e7e7;
+      border-radius:14px;padding:18px;min-height:108px
+    }
+    .app-card:hover{background:#f4f4f4}
+    .app-card h3{margin:0 0 8px 0;font-size:18px}
+    .app-card p{margin:0;color:#666;font-size:14px;line-height:1.35}
+    .row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .muted{color:#666;font-size:13px}
+    .status{
+      font:12px/1.3 system-ui;padding:8px 10px;background:#eef5ff;border:1px solid #d6e6ff;
+      border-radius:8px;margin:12px 0 16px 0
+    }
+    .banner{display:none;padding:10px 12px;border-radius:8px;margin-bottom:12px}
+    .banner.ok{background:#d4edda}
+    .banner.err{background:#f8d7da}
+    .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+    @media (max-width:640px){
+      .row2{grid-template-columns:1fr}
+      .home-wrap{padding:14px}
+    }
+  </style>
+</head>
+<body>
+  <div class="home-wrap">
+    <div class="hero">
+      <h1>Inventory App</h1>
+      <p>Capture items, search inventory, review reports, and manage containers.</p>
+    </div>
+
+    <div id="banner" class="banner"></div>
+
+    <div id="signedOut" class="auth-box" style="display:none;">
+      <h2 style="margin-top:0;">Sign In</h2>
+      <div id="authStatus" class="status">Checking session…</div>
+
+      <label>Email</label>
+      <input id="email" type="email" placeholder="you@example.com" />
+
+      <label>Password</label>
+      <input id="password" type="password" placeholder="••••••••" />
+
+      <div class="actions">
+        <button class="btn" id="btnLogin" style="max-width:180px;">Sign In</button>
+        <a class="btn secondary" href="capture.html" style="max-width:220px;text-decoration:none;text-align:center;">Open Capture Directly</a>
+      </div>
+
+      <div class="muted" style="margin-top:12px;">
+        This screen is the main entry point for the app. Once signed in, you will see the dashboard.
+      </div>
+    </div>
+
+    <div id="signedIn" class="dash-box" style="display:none;">
+      <h2 style="margin-top:0;">Dashboard</h2>
+      <div id="userStatus" class="status"></div>
+
+      <div class="grid">
+        <a class="app-card" href="capture.html">
+          <h3>Capture Items</h3>
+          <p>Fast entry workflow for adding items to containers.</p>
+        </a>
+
+        <a class="app-card" href="search.html">
+          <h3>Search Inventory</h3>
+          <p>Find items by description or container code.</p>
+        </a>
+
+        <a class="app-card" href="inventory_report.html">
+          <h3>Inventory Report</h3>
+          <p>Review containers and contents, print, edit, and delete test data.</p>
+        </a>
+
+        <a class="app-card" href="container.html">
+          <h3>Containers</h3>
+          <p>Open container tools and detail workflows.</p>
+        </a>
+      </div>
+
+      <div class="actions">
+        <button class="btn secondary" id="btnRefreshSession" style="max-width:200px;">Refresh Session</button>
+        <button class="btn secondary" id="btnLogout" style="max-width:180px;">Logout</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+(function(){
+  const sb = getSupabase();
+  const banner = document.getElementById("banner");
+  const signedOut = document.getElementById("signedOut");
+  const signedIn = document.getElementById("signedIn");
+  const authStatus = document.getElementById("authStatus");
+  const userStatus = document.getElementById("userStatus");
+  const btnLogin = document.getElementById("btnLogin");
+  const btnLogout = document.getElementById("btnLogout");
+  const btnRefreshSession = document.getElementById("btnRefreshSession");
+  const emailEl = document.getElementById("email");
+  const passwordEl = document.getElementById("password");
+
+  function showBanner(type, msg){
+    banner.className = "banner " + (type || "ok");
+    banner.textContent = msg;
+    banner.style.display = "block";
+    setTimeout(() => banner.style.display = "none", 5000);
+  }
+
+  function showSignedOut(msg){
+    signedOut.style.display = "block";
+    signedIn.style.display = "none";
+    authStatus.textContent = msg || "Not signed in.";
+  }
+
+  function showSignedIn(user){
+    signedOut.style.display = "none";
+    signedIn.style.display = "block";
+    userStatus.textContent = "Signed in as " + (user.email || user.id);
+  }
+
+  async function refreshSession(){
+    try{
+      const { data: { session } } = await sb.auth.getSession();
+      if (session?.user){
+        showSignedIn(session.user);
+        return;
+      }
+      const { data } = await sb.auth.getUser();
+      if (data?.user){
+        showSignedIn(data.user);
+      } else {
+        showSignedOut("Not signed in.");
+      }
+    }catch(e){
+      showSignedOut("Session check failed.");
+      showBanner("err", "Session error: " + (e.message || e));
+    }
+  }
+
+  btnLogin.addEventListener("click", async () => {
+    try{
+      const email = emailEl.value.trim();
+      const password = passwordEl.value;
+      if (!email || !password){
+        showBanner("err", "Enter email and password.");
+        return;
+      }
+      authStatus.textContent = "Signing in…";
+      const { error } = await sb.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+      const { data } = await sb.auth.getUser();
+      if (!data?.user) throw new Error("Login succeeded but no user session was returned.");
+      showSignedIn(data.user);
+      showBanner("ok", "Login successful.");
+    }catch(e){
+      showSignedOut("Sign in failed.");
+      showBanner("err", "Login failed: " + (e.message || e));
+    }
+  });
+
+  btnLogout.addEventListener("click", async () => {
+    try{
+      await sb.auth.signOut();
+      showSignedOut("Signed out.");
+      showBanner("ok", "Logged out.");
+    }catch(e){
+      showBanner("err", "Logout failed: " + (e.message || e));
+    }
+  });
+
+  btnRefreshSession.addEventListener("click", refreshSession);
+
+  sb.auth.onAuthStateChange(async (_event, session) => {
+    if (session?.user) showSignedIn(session.user);
+    else showSignedOut("Not signed in.");
+  });
+
+  refreshSession();
+})();
+</script>
+</body>
+</html>
