@@ -6,130 +6,128 @@
 <title>Inventory Capture</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="config.js"></script>
+<script src="navigation.js"></script>
 <style>
-body{font-family:system-ui;background:#f6f6f6;margin:0;padding:20px}
-.card{background:white;padding:20px;border-radius:8px;max-width:700px;margin:auto}
-.banner{display:none;padding:10px;margin-bottom:10px;border-radius:6px}
-.banner.ok{background:#d4edda}
-.banner.err{background:#f8d7da}
-.banner.warn{background:#fff3cd}
-input,textarea{width:100%;padding:8px;margin:6px 0}
-button{padding:10px 14px;margin-top:10px}
+body{font-family:system-ui;background:#eef2f7;color:#17212b;margin:0;padding:20px}
+.page{max-width:820px;margin:auto}
+.card{background:#ffffff;padding:20px;border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,.08)}
+.banner{display:none;padding:12px 14px;margin-bottom:12px;border-radius:8px;font-weight:600}
+.banner.ok{background:#dff3e4;color:#0b4f1e}
+.banner.err{background:#fce2e2;color:#7a1320}
+.banner.warn{background:#fff1cc;color:#6a4b00}
+label{display:block;margin-top:12px;font-weight:700;color:#1a2430}
+input,textarea{width:100%;padding:10px 12px;margin:6px 0;border:1px solid #b8c4d1;border-radius:8px;background:#fff;color:#17212b}
+button,.btn{padding:10px 14px;margin-top:12px;border:1px solid #8796a5;border-radius:8px;background:#f8fafc;color:#17212b;cursor:pointer}
+button:hover,.btn:hover{background:#eef3f8}
+.small{font-size:13px;color:#445262;margin-top:8px}
+.viewBtn{margin-left:10px}
+#navBar{margin-bottom:14px}
 </style>
 </head>
 <body>
+<div class="page">
+  <div id="navBar"></div>
+  <div class="card">
+    <div id="banner" class="banner"></div>
+    <h2 style="margin-top:0;color:#17212b">Inventory Capture</h2>
 
-<div class="card">
-<div id="banner" class="banner"></div>
+    <label>Container Code</label>
+    <input id="containerCode" placeholder="TOTE0001"/>
 
-<h2>Inventory Capture</h2>
+    <label>Description</label>
+    <textarea id="desc" placeholder="Item description"></textarea>
 
-<label>Container Code</label>
-<input id="containerCode"/>
+    <label>Photo (optional)</label>
+    <input id="photo" type="file" accept="image/*"/>
 
-<label>Description</label>
-<textarea id="desc"></textarea>
+    <label>Quantity</label>
+    <input id="qty" type="number" value="1"/>
 
-<label>Photo (optional)</label>
-<input id="photo" type="file" accept="image/*"/>
+    <button id="saveBtn">Save Item</button>
+    <button id="viewContainerBtn" class="viewBtn" style="display:none;">View Container</button>
 
-<label>Quantity</label>
-<input id="qty" type="number" value="1"/>
-
-<button id="saveBtn">Save Item</button>
-
+    <div class="small">Provide a description, a photo, or both.</div>
+  </div>
 </div>
 
 <script>
+const sb = getSupabase();
+const banner=document.getElementById("banner");
+const containerCode=document.getElementById("containerCode");
+const descEl=document.getElementById("desc");
+const photoEl=document.getElementById("photo");
+const qtyEl=document.getElementById("qty");
+const saveBtn=document.getElementById("saveBtn");
+const viewBtn=document.getElementById("viewContainerBtn");
+let lastContainer=null;
 
-const banner=document.getElementById("banner")
 function showBanner(type,msg){
-banner.className="banner "+type
-banner.textContent=msg
-banner.style.display="block"
-setTimeout(()=>banner.style.display="none",5000)
+  banner.className="banner "+type;
+  banner.textContent=msg;
+  banner.style.display="block";
+  setTimeout(()=>banner.style.display="none",5000);
 }
-
-const sb=getSupabase()
-
-function normalizeContainer(code){
-return String(code||"").trim().toUpperCase()
-}
+function normalizeContainer(code){ return String(code||"").trim().toUpperCase(); }
 
 async function ensureContainer(code){
-let {data,error}=await sb
-.from("containers")
-.select("container_code")
-.eq("container_code",code)
-.eq("is_active",true)
-.maybeSingle()
-
-if(error) throw error
-
-if(data) return
-
-await sb.from("containers").insert([{container_code:code}])
+  let {data,error}=await sb.from("containers")
+    .select("container_code")
+    .eq("container_code",code)
+    .eq("is_active",true)
+    .maybeSingle();
+  if(error) throw error;
+  if(data) return;
+  const { error: insErr } = await sb.from("containers").insert([{container_code:code}]);
+  if(insErr) throw insErr;
 }
 
 async function saveItem(){
+  const container=normalizeContainer(containerCode.value);
+  const desc=descEl.value.trim();
+  const qty=Number(qtyEl.value||1);
+  const photo=photoEl.files[0];
 
-const container=normalizeContainer(containerCode.value)
-const desc=descEl.value.trim()
-const qty=Number(qtyEl.value||1)
-const photo=photoEl.files[0]
+  if(!container){ showBanner("err","Container code required"); return; }
+  if(!photo && !desc){ showBanner("err","Add a photo or description"); return; }
 
-if(!container){
-showBanner("err","Container required")
-return
+  await ensureContainer(container);
+
+  const item_id=crypto.randomUUID();
+  let photo_path=null;
+
+  if(photo){
+    photo_path=`items/${item_id}.jpg`;
+    const {error:uploadErr}=await sb.storage.from("item-photos").upload(photo_path,photo);
+    if(uploadErr) throw uploadErr;
+  }
+
+  const {error}=await sb.from("items").insert([{
+    item_id:item_id,
+    ref_uid:item_id,
+    container_code:container,
+    item_description:desc,
+    quantity:qty,
+    photo_path:photo_path
+  }]);
+  if(error) throw error;
+
+  lastContainer=container;
+  showBanner("ok","✓ Item saved to "+container);
+  viewBtn.style.display="inline-block";
+  descEl.value="";
+  photoEl.value="";
+  qtyEl.value="1";
+  descEl.focus();
 }
 
-if(!photo && !desc){
-showBanner("err","Photo or description required")
-return
-}
+viewBtn.addEventListener("click",()=>{
+  if(!lastContainer) return;
+  window.location.href="container_detail.html?container_code="+encodeURIComponent(lastContainer);
+});
 
-await ensureContainer(container)
+saveBtn.addEventListener("click",()=>saveItem().catch(e=>showBanner("err","Save failed: "+(e.message||e))));
 
-let photo_path=null
-const item_id=crypto.randomUUID()
-
-if(photo){
-photo_path=`items/${item_id}.jpg`
-const {error:uploadErr}=await sb.storage
-.from("item-photos")
-.upload(photo_path,photo)
-
-if(uploadErr) throw uploadErr
-}
-
-const {error}=await sb.from("items").insert([{
-item_id:item_id,
-ref_uid:item_id,
-container_code:container,
-item_description:desc,
-quantity:qty,
-photo_path:photo_path
-}])
-
-if(error) throw error
-
-showBanner("ok","✓ Item saved to "+container)
-
-descEl.value=""
-photoEl.value=""
-qtyEl.value="1"
-
-}
-
-const containerCode=document.getElementById("containerCode")
-const descEl=document.getElementById("desc")
-const photoEl=document.getElementById("photo")
-const qtyEl=document.getElementById("qty")
-const saveBtn=document.getElementById("saveBtn")
-
-saveBtn.addEventListener("click",saveItem)
-
+if(window.APP_NAV && APP_NAV.render){ APP_NAV.render("navBar"); }
 </script>
-
 </body>
 </html>
