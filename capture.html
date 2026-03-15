@@ -18,6 +18,67 @@ Revision: 2026-01-09.v4
   <script src="config.js"></script>
   <script src="navigation.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/quagga@0.12.1/dist/quagga.min.js"></script>
+
+<style>
+  /* Update: Improve iPhone scanner usability and hide debug auth banner from normal view.
+     Revision: 2026-03-15.v5 */
+  #authStatus{ display:none !important; }
+
+  .modalBackdrop{
+    position:fixed !important;
+    inset:0 !important;
+    background:rgba(0,0,0,.72) !important;
+    display:none;
+    align-items:center !important;
+    justify-content:center !important;
+    z-index:9999 !important;
+    padding:16px !important;
+  }
+  .modal{
+    width:min(760px,96vw) !important;
+    max-height:92vh !important;
+    overflow:auto !important;
+    background:var(--card2,#0d1628) !important;
+    border:1px solid var(--border,#22314f) !important;
+    border-radius:16px !important;
+    box-shadow:0 12px 32px rgba(0,0,0,.35) !important;
+  }
+  .modalHeader{ padding:14px 16px !important; }
+  .modalBody{ padding:14px 16px 18px !important; }
+  .videoBox{
+    border-radius:14px !important;
+    overflow:hidden !important;
+    border:1px solid rgba(255,255,255,.12) !important;
+    background:#000 !important;
+    position:relative !important;
+    min-height:280px !important;
+  }
+  #scanner{
+    width:100% !important;
+    min-height:280px !important;
+  }
+  #scanner video, #scanner canvas,
+  .videoBox video, .videoBox canvas{
+    width:100% !important;
+    height:46vh !important;
+    min-height:280px !important;
+    object-fit:cover !important;
+    display:block !important;
+  }
+  .scanHint{
+    position:absolute !important;
+    inset:18% 12% !important;
+    border:2px solid rgba(255,255,255,.85) !important;
+    border-radius:14px !important;
+    box-shadow:0 0 0 2000px rgba(0,0,0,.24) inset !important;
+    pointer-events:none !important;
+    z-index:5 !important;
+  }
+  .scanSectionNote{
+    padding-left:4px;
+  }
+</style>
+
 </head>
 <body>
   <div class="page">
@@ -86,7 +147,7 @@ Revision: 2026-01-09.v4
           <div class="scanHint"></div>
           <div id="scanner"></div>
         </div>
-        <div class="small-note">Tip: hold steady ~8–14 inches away. Align the barcode within the box.</div>
+        <div class="small-note scanSectionNote">Tip: hold steady ~8–14 inches away. Align the barcode within the box.</div>
       </div>
     </div>
   </div>
@@ -104,19 +165,6 @@ Revision: 2026-01-09.v4
   const btnCloseScan = document.getElementById("btnCloseScan");
   const scanModal = document.getElementById("scanModal");
   const containerCodeEl = document.getElementById("containerCode");
-
-  // --- Auto-focus for barcode scanning workflow ---
-  function focusContainerField(){
-    setTimeout(() => {
-      if(containerCodeEl){
-        containerCodeEl.focus();
-        containerCodeEl.select();
-      }
-    },150);
-  }
-
-  document.addEventListener("DOMContentLoaded", focusContainerField);
-
   const containerSetNote = document.getElementById("containerSetNote");
 
   // SINGLE client for the page
@@ -376,20 +424,30 @@ Revision: 2026-01-09.v4
   // ------- Scanner (Quagga) -------
   function openScan(){
     scanModal.style.display = "flex";
+    document.body.style.overflow = "hidden";
     const target = document.getElementById("scanner");
     target.innerHTML = "";
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    showBanner("ok", "Camera opened. Aim the barcode inside the white box.");
 
     Quagga.init({
       inputStream: {
         type: "LiveStream",
         target: target,
         constraints: {
-          facingMode: "environment",
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
+          facingMode: { ideal: "environment" },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+          aspectRatio: { ideal: 1.7777778 }
         },
-        area: { top:"20%", right:"10%", left:"10%", bottom:"20%" }
+        area: { top:"18%", right:"10%", left:"10%", bottom:"18%" }
       },
+      locator: {
+        patchSize: "medium",
+        halfSample: false
+      },
+      numOfWorkers: isIOS ? 0 : 2,
+      frequency: 10,
       decoder: { readers: ["code_39_reader"] },
       locate: true
     }, (err) => {
@@ -411,11 +469,13 @@ Revision: 2026-01-09.v4
       containerSetNote.textContent = `Container set: ${normalized}`;
       showBanner("ok", `Scanned: ${normalized}`);
       closeScan();
+      focusContainerField();
     });
   }
 
   function closeScan(){
     scanModal.style.display = "none";
+    document.body.style.overflow = "";
     try { Quagga.stop(); } catch(e) {}
   }
 
