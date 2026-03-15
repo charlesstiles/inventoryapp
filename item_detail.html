@@ -86,6 +86,7 @@
       <div class="row">
         <button class="btn secondary" id="btnEdit" style="max-width:180px;">Edit</button>
         <button class="btn disabled" id="btnSave" disabled style="max-width:220px;">Save</button>
+        <button class="btn secondary" id="btnReturn" style="display:none;max-width:220px;">Return</button>
       </div>
 
       <div class="hr"></div>
@@ -117,6 +118,7 @@
   const containerCodeEl = document.getElementById("containerCode");
   const btnEdit = document.getElementById("btnEdit");
   const btnSave = document.getElementById("btnSave");
+  const btnReturn = document.getElementById("btnReturn");
   const photoWrap = document.getElementById("photoWrap");
   const photoFile = document.getElementById("photoFile");
   const tbl = document.getElementById("tbl");
@@ -143,6 +145,17 @@
   function getParam(name){
     const u = new URL(window.location.href);
     return u.searchParams.get(name);
+  }
+  function getReturnTarget(){
+    return getParam("return") || document.referrer || "";
+  }
+  function goBackAfterSave(defaultUrl){
+    const target = getReturnTarget();
+    if (target){
+      window.location.href = decodeURIComponent(target);
+    } else {
+      window.location.href = defaultUrl;
+    }
   }
   async function compressImageToJpeg(file, maxDim=1024, quality=0.72){
     const img = new Image();
@@ -173,6 +186,12 @@
   if (!ref_uid){
     showBanner("err","Missing ref_uid");
     return;
+  }
+
+  const returnTarget = getReturnTarget();
+  if (returnTarget){
+    btnReturn.style.display = "inline-flex";
+    btnReturn.addEventListener("click", () => goBackAfterSave("container.html"));
   }
 
   const sb = getSupabase();
@@ -324,7 +343,7 @@
       }
 
       showBanner("ok","Saved new version ✅");
-      window.location.reload();
+      setTimeout(() => goBackAfterSave(`container_detail.html?container_code=${encodeURIComponent(newContainerCode)}`), 300);
     }catch(e){
       showBanner("err","Save failed: " + (e.message || e));
     }
@@ -368,7 +387,7 @@
         <td class="mono">${esc(new Date(it.created_at).toLocaleString())}</td>
         <td class="no-print">
           <div class="action-stack">
-            <a class="icon-circle icon-edit" href="item_detail.html?ref_uid=${encodeURIComponent(it.ref_uid)}" title="Edit item">✎</a>
+            <a class="icon-circle icon-edit" href="item_detail.html?ref_uid=${encodeURIComponent(it.ref_uid)}&return=${encodeURIComponent(window.location.href)}" title="Edit item">✎</a>
           </div>
         </td>
       `;
