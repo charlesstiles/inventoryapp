@@ -1,8 +1,3 @@
-<!--
-Update: Add desktop-friendly inventory report with grouped containers, thumbnails, detail links,
-        safe delete actions with confirmation, and print support.
-Revision: 2026-03-15.v1
--->
 <!doctype html>
 <html>
 <head>
@@ -14,42 +9,50 @@ Revision: 2026-03-15.v1
   <script src="config.js"></script>
   <script src="navigation.js"></script>
   <style>
-    .report-toolbar{
-      display:flex; gap:10px; align-items:end; flex-wrap:wrap; margin-bottom:14px;
+    body{background:#eef2f7;color:#17212b}
+    .report-toolbar{display:flex;gap:10px;align-items:end;flex-wrap:wrap;margin-bottom:14px}
+    .report-toolbar .spacer{flex:1}
+    .report-table th,.report-table td{vertical-align:middle}
+    .report-table th{white-space:nowrap}
+    .thumb-sm{width:48px;height:48px;object-fit:cover;border-radius:8px;border:1px solid #cbd5e1;background:#f8fafc}
+    .icon-btn{border:1px solid #94a3b8;background:#fff;border-radius:8px;padding:6px 8px;cursor:pointer;text-decoration:none;display:inline-block;line-height:1;color:#17212b}
+    .icon-btn:hover{background:#eef3f8}
+    .icon-row{display:flex;gap:6px;align-items:center}
+    .container-group{border:1px solid #cbd5e1;border-radius:12px;margin:16px 0;overflow:hidden;background:#fff}
+    .container-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;background:#eaf1f8;border-bottom:1px solid #cbd5e1;padding:12px 14px}
+    .container-title{font-weight:800;font-size:20px;color:#0f172a}
+    .container-meta{color:#334155;font-size:13px;margin-top:4px;font-weight:600}
+    .empty-note{color:#334155;padding:14px}
+    .danger-lite{color:#8a1320;border-color:#e2a8af}
+    .print-only{display:none}
+    .table th{background:#f3f6fa;color:#0f172a;font-weight:800}
+    .table td{color:#17212b;background:#fff}
+    .item-desc{color:#111827;font-weight:600}
+    .small-note,#summary{color:#334155;font-weight:600}
+    .confirm-overlay{
+      position:fixed; inset:0; background:rgba(15,23,42,.45); display:none; align-items:center; justify-content:center; z-index:9999;
     }
-    .report-toolbar .spacer{ flex:1; }
-    .report-table th, .report-table td{ vertical-align:middle; }
-    .report-table th{ white-space:nowrap; }
-    .thumb-sm{
-      width:48px; height:48px; object-fit:cover; border-radius:8px; border:1px solid #ddd;
-      background:#f6f6f6;
+    .confirm-box{
+      background:#fff; border-radius:14px; width:min(520px,92vw); padding:18px; box-shadow:0 10px 30px rgba(0,0,0,.18);
+      border:1px solid #cbd5e1;
     }
-    .icon-btn{
-      border:1px solid #d8d8d8; background:#fff; border-radius:8px; padding:6px 8px; cursor:pointer;
-      text-decoration:none; display:inline-block; line-height:1;
+    .confirm-box h3{margin:0 0 10px 0; color:#0f172a}
+    .confirm-box p{color:#334155; margin:0 0 16px 0}
+    .confirm-actions{display:flex; gap:10px; justify-content:flex-end}
+    .btn-lite{
+      padding:10px 14px; border:1px solid #94a3b8; border-radius:8px; background:#f8fafc; color:#17212b; cursor:pointer;
     }
-    .icon-btn:hover{ background:#f7f7f7; }
-    .icon-row{ display:flex; gap:6px; align-items:center; }
-    .container-group{
-      border:1px solid #e5e5e5; border-radius:12px; margin:16px 0; overflow:hidden; background:#fff;
+    .btn-danger{
+      padding:10px 14px; border:1px solid #dc2626; border-radius:8px; background:#fee2e2; color:#7f1d1d; cursor:pointer;
     }
-    .container-head{
-      display:flex; justify-content:space-between; gap:10px; align-items:flex-start;
-      background:#f7f8fa; border-bottom:1px solid #e5e5e5; padding:12px 14px;
-    }
-    .container-title{ font-weight:700; font-size:18px; }
-    .container-meta{ color:#666; font-size:12px; margin-top:4px; }
-    .empty-note{ color:#666; padding:14px; }
-    .danger-lite{ color:#9c1c1c; border-color:#e6b9b9; }
-    .print-only{ display:none; }
     @media print{
-      .no-print, #navBar, .banner{ display:none !important; }
-      .print-only{ display:block; }
-      body{ background:#fff; padding:0; }
-      .page{ max-width:none; }
-      .card{ box-shadow:none; border:none; padding:0; }
-      .container-group{ break-inside:avoid; }
-      a{ color:#000; text-decoration:none; }
+      .no-print,#navBar,.banner,.confirm-overlay{display:none !important}
+      .print-only{display:block}
+      body{background:#fff;padding:0}
+      .page{max-width:none}
+      .card{box-shadow:none;border:none;padding:0}
+      .container-group{break-inside:avoid}
+      a{color:#000;text-decoration:none}
     }
   </style>
 </head>
@@ -59,7 +62,7 @@ Revision: 2026-03-15.v1
     <div id="banner" class="banner" style="display:none;"></div>
 
     <div class="card">
-      <h1>Inventory Report</h1>
+      <h1 style="color:#0f172a">Inventory Report</h1>
       <div class="small-note print-only" id="printStamp"></div>
 
       <div class="report-toolbar no-print">
@@ -91,6 +94,17 @@ Revision: 2026-03-15.v1
     </div>
   </div>
 
+  <div class="confirm-overlay" id="confirmOverlay">
+    <div class="confirm-box">
+      <h3 id="confirmTitle">Confirm</h3>
+      <p id="confirmMessage"></p>
+      <div class="confirm-actions">
+        <button class="btn-lite" id="confirmCancel">Cancel</button>
+        <button class="btn-danger" id="confirmProceed">Delete</button>
+      </div>
+    </div>
+  </div>
+
 <script>
 (async function(){
   const banner = document.getElementById("banner");
@@ -102,6 +116,11 @@ Revision: 2026-03-15.v1
   const btnPrint = document.getElementById("btnPrint");
   const summary = document.getElementById("summary");
   const printStamp = document.getElementById("printStamp");
+  const confirmOverlay = document.getElementById("confirmOverlay");
+  const confirmTitle = document.getElementById("confirmTitle");
+  const confirmMessage = document.getElementById("confirmMessage");
+  const confirmCancel = document.getElementById("confirmCancel");
+  const confirmProceed = document.getElementById("confirmProceed");
 
   function showBanner(type, msg){
     banner.className = "banner " + (type || "ok");
@@ -109,24 +128,32 @@ Revision: 2026-03-15.v1
     banner.style.display = "block";
     setTimeout(() => banner.style.display = "none", 5000);
   }
-
   function esc(s){
-    return String(s || "").replace(/[&<>"']/g, m => ({
-      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
-    }[m]));
+    return String(s || "").replace(/[&<>"']/g, m => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[m]));
+  }
+  function askConfirm(title, message){
+    return new Promise(resolve => {
+      confirmTitle.textContent = title;
+      confirmMessage.textContent = message;
+      confirmOverlay.style.display = "flex";
+      function cleanup(val){
+        confirmOverlay.style.display = "none";
+        confirmCancel.onclick = null;
+        confirmProceed.onclick = null;
+        resolve(val);
+      }
+      confirmCancel.onclick = () => cleanup(false);
+      confirmProceed.onclick = () => cleanup(true);
+    });
   }
 
   async function requireAuth(){
     await window.APP_NAV.render("navBar");
     const sb = getSupabase();
     const { data } = await sb.auth.getUser();
-    if (!data.user){
-      window.location.href = "capture.html";
-      return null;
-    }
+    if (!data.user){ window.location.href = "index.html"; return null; }
     return data.user;
   }
-
   async function signedThumb(path){
     if (!path) return null;
     const sb = getSupabase();
@@ -138,18 +165,13 @@ Revision: 2026-03-15.v1
   const user = await requireAuth();
   if (!user) return;
 
-  let state = {
-    containers: [],
-    itemsByContainer: new Map()
-  };
+  let state = { containers: [], itemsByContainer: new Map() };
 
   function itemMatchesFilter(item, q){
     if (!q) return true;
     const s = q.toLowerCase();
-    return (item.container_code || "").toLowerCase().includes(s)
-      || (item.item_description || "").toLowerCase().includes(s);
+    return (item.container_code || "").toLowerCase().includes(s) || (item.item_description || "").toLowerCase().includes(s);
   }
-
   function containerMatchesFilter(container, items, q){
     if (!q) return true;
     const s = q.toLowerCase();
@@ -161,19 +183,12 @@ Revision: 2026-03-15.v1
     summary.textContent = "Loading report…";
     reportRoot.innerHTML = "";
     const sb = getSupabase();
-
     const [{ data: containers, error: cErr }, { data: items, error: iErr }] = await Promise.all([
-      sb.from("containers")
-        .select("container_id, ref_uid, container_code, container_description, created_at, created_by, updated_at, updated_by, is_active")
-        .eq("is_active", true)
-        .order("container_code", { ascending: true }),
-      sb.from("items")
-        .select("item_id, ref_uid, container_code, item_description, quantity, photo_path, created_at, created_by, updated_at, updated_by, is_active")
-        .eq("is_active", true)
-        .order("container_code", { ascending: true })
-        .order("created_at", { ascending: false })
+      sb.from("containers").select("container_id, ref_uid, container_code, container_description, created_at, created_by, updated_at, updated_by, is_active")
+        .eq("is_active", true).order("container_code", { ascending: true }),
+      sb.from("items").select("item_id, ref_uid, container_code, item_description, quantity, photo_path, created_at, created_by, updated_at, updated_by, is_active")
+        .eq("is_active", true).order("container_code", { ascending: true }).order("created_at", { ascending: false })
     ]);
-
     if (cErr) throw cErr;
     if (iErr) throw iErr;
 
@@ -183,22 +198,19 @@ Revision: 2026-03-15.v1
       if (!byContainer.has(code)) byContainer.set(code, []);
       byContainer.get(code).push(it);
     }
-
     state.containers = containers || [];
     state.itemsByContainer = byContainer;
   }
 
   async function deleteItem(item){
-    if (!window.confirm(`Delete this item from ${item.container_code}?\n\n${item.item_description || "(no description)"}`)) return;
-
+    const ok = await askConfirm("Delete item?", `${item.item_description || "(no description)"} from ${item.container_code}`);
+    if (!ok) return;
     const sb = getSupabase();
     const payload = { is_active: false };
     if ("updated_at" in item) payload.updated_at = new Date().toISOString();
     if ("updated_by" in item) payload.updated_by = user.id;
-
     const { error } = await sb.from("items").update(payload).eq("item_id", item.item_id);
     if (error) throw error;
-
     showBanner("ok", "Item deleted.");
     await refresh();
   }
@@ -208,17 +220,14 @@ Revision: 2026-03-15.v1
       showBanner("warn", `Container ${container.container_code} still has ${items.length} active item(s). Delete items first.`);
       return;
     }
-
-    if (!window.confirm(`Delete empty container ${container.container_code}?`)) return;
-
+    const ok = await askConfirm("Delete container?", `Delete empty container ${container.container_code}?`);
+    if (!ok) return;
     const sb = getSupabase();
     const payload = { is_active: false };
     if ("updated_at" in container) payload.updated_at = new Date().toISOString();
     if ("updated_by" in container) payload.updated_by = user.id;
-
     const { error } = await sb.from("containers").update(payload).eq("container_id", container.container_id);
     if (error) throw error;
-
     showBanner("ok", "Container deleted.");
     await refresh();
   }
@@ -227,7 +236,6 @@ Revision: 2026-03-15.v1
     const q = qEl.value.trim();
     const thumbMode = thumbModeEl.value;
     const sortBy = sortByEl.value;
-
     let containers = state.containers.slice();
 
     containers = containers.filter(c => {
@@ -254,8 +262,8 @@ Revision: 2026-03-15.v1
 
     summary.textContent = `${containers.length} container(s), ${itemCount} item(s).`;
     printStamp.textContent = `Printed ${new Date().toLocaleString()}`;
-
     reportRoot.innerHTML = "";
+
     if (!containers.length){
       reportRoot.innerHTML = `<div class="empty-note">No containers match the current filter.</div>`;
       return;
@@ -313,7 +321,7 @@ Revision: 2026-03-15.v1
           const thumbUrl = thumbMode === "thumb" ? await signedThumb(item.photo_path) : null;
           tr.innerHTML = `
             <td>${thumbMode === "thumb" ? (thumbUrl ? `<img class="thumb-sm" src="${thumbUrl}" />` : "") : ""}</td>
-            <td>${esc(item.item_description || "(no description)")}</td>
+            <td class="item-desc">${esc(item.item_description || "(no description)")}</td>
             <td class="mono">${esc(item.quantity ?? "")}</td>
             <td class="mono">${esc(item.created_at ? new Date(item.created_at).toLocaleString() : "")}</td>
             <td class="no-print">
@@ -328,7 +336,6 @@ Revision: 2026-03-15.v1
           });
           tbody.appendChild(tr);
         }
-
         group.appendChild(table);
       }
 
@@ -341,13 +348,8 @@ Revision: 2026-03-15.v1
   }
 
   async function refresh(){
-    try{
-      await loadData();
-      await render();
-    }catch(e){
-      showBanner("err", "Load failed: " + (e.message || e));
-      summary.textContent = "";
-    }
+    try { await loadData(); await render(); }
+    catch(e){ showBanner("err", "Load failed: " + (e.message || e)); summary.textContent = ""; }
   }
 
   qEl.addEventListener("input", () => { render().catch(console.error); });
