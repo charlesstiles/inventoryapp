@@ -8,48 +8,49 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js"></script>
   <style>
+    body{background:#e9eef5;color:#15202b}
     .home-wrap{max-width:980px;margin:0 auto;padding:24px}
-    .hero{
-      background:#fff;border-radius:16px;padding:24px;margin-bottom:18px;
-      box-shadow:0 2px 12px rgba(0,0,0,.06)
+    .hero,.auth-box,.dash-box{
+      background:#ffffff;border-radius:16px;padding:24px;box-shadow:0 2px 12px rgba(0,0,0,.08)
     }
-    .hero h1{margin:0 0 6px 0}
-    .hero p{margin:0;color:#555}
-    .auth-box,.dash-box{
-      background:#fff;border-radius:16px;padding:24px;
-      box-shadow:0 2px 12px rgba(0,0,0,.06)
+    .hero{margin-bottom:18px}
+    .hero h1{margin:0 0 6px 0;color:#101820}
+    .hero p{margin:0;color:#334155}
+    .auth-box h2,.dash-box h2{color:#101820}
+    label{font-weight:700;color:#17212b}
+    input{
+      width:100%;padding:10px 12px;border:1px solid #94a3b8;border-radius:8px;background:#fff;color:#17212b
     }
-    .grid{
-      display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-top:10px
-    }
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-top:10px}
     .app-card{
-      display:block;text-decoration:none;color:inherit;background:#fafafa;border:1px solid #e7e7e7;
+      display:block;text-decoration:none;color:#111827;background:#f8fafc;border:1px solid #cbd5e1;
       border-radius:14px;padding:18px;min-height:108px
     }
-    .app-card:hover{background:#f4f4f4}
-    .app-card h3{margin:0 0 8px 0;font-size:18px}
-    .app-card p{margin:0;color:#666;font-size:14px;line-height:1.35}
-    .row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-    .muted{color:#666;font-size:13px}
+    .app-card:hover{background:#eef3f8}
+    .app-card h3{margin:0 0 8px 0;font-size:18px;color:#0f172a}
+    .app-card p{margin:0;color:#334155;font-size:14px;line-height:1.35}
+    .muted{color:#475569;font-size:13px}
     .status{
-      font:12px/1.3 system-ui;padding:8px 10px;background:#eef5ff;border:1px solid #d6e6ff;
-      border-radius:8px;margin:12px 0 16px 0
+      font:13px/1.4 system-ui;padding:10px 12px;background:#edf4ff;border:1px solid #bfdbfe;
+      color:#0f172a;border-radius:8px;margin:12px 0 16px 0;font-weight:600
     }
-    .banner{display:none;padding:10px 12px;border-radius:8px;margin-bottom:12px}
-    .banner.ok{background:#d4edda}
-    .banner.err{background:#f8d7da}
+    .banner{display:none;padding:12px 14px;border-radius:8px;margin-bottom:12px;font-weight:700}
+    .banner.ok{background:#dff3e4;color:#0b4f1e}
+    .banner.err{background:#fce2e2;color:#7a1320}
     .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
-    @media (max-width:640px){
-      .row2{grid-template-columns:1fr}
-      .home-wrap{padding:14px}
+    .btn,.btn.secondary,button{
+      display:inline-block;padding:10px 14px;border:1px solid #94a3b8;border-radius:8px;background:#f8fafc;
+      color:#17212b;text-decoration:none;cursor:pointer
     }
+    .btn:hover,.btn.secondary:hover,button:hover{background:#eef3f8}
+    @media (max-width:640px){ .home-wrap{padding:14px} }
   </style>
 </head>
 <body>
   <div class="home-wrap">
     <div class="hero">
       <h1>Inventory App</h1>
-      <p>Capture items, search inventory, review reports, and manage containers.</p>
+      <p>Warehouse inventory capture, search, reporting, and container management.</p>
     </div>
 
     <div id="banner" class="banner"></div>
@@ -61,7 +62,7 @@
       <label>Email</label>
       <input id="email" type="email" placeholder="you@example.com" />
 
-      <label>Password</label>
+      <label style="margin-top:12px;display:block;">Password</label>
       <input id="password" type="password" placeholder="••••••••" />
 
       <div class="actions">
@@ -70,7 +71,7 @@
       </div>
 
       <div class="muted" style="margin-top:12px;">
-        This screen is the main entry point for the app. Once signed in, you will see the dashboard.
+        Use this page as the main entry point to the application.
       </div>
     </div>
 
@@ -81,7 +82,7 @@
       <div class="grid">
         <a class="app-card" href="capture.html">
           <h3>Capture Items</h3>
-          <p>Fast entry workflow for adding items to containers.</p>
+          <p>Add items quickly to new or existing containers.</p>
         </a>
 
         <a class="app-card" href="search.html">
@@ -91,7 +92,7 @@
 
         <a class="app-card" href="inventory_report.html">
           <h3>Inventory Report</h3>
-          <p>Review containers and contents, print, edit, and delete test data.</p>
+          <p>Review contents by container, print, edit, and delete test data.</p>
         </a>
 
         <a class="app-card" href="container.html">
@@ -127,46 +128,33 @@
     banner.style.display = "block";
     setTimeout(() => banner.style.display = "none", 5000);
   }
-
   function showSignedOut(msg){
     signedOut.style.display = "block";
     signedIn.style.display = "none";
     authStatus.textContent = msg || "Not signed in.";
   }
-
   function showSignedIn(user){
     signedOut.style.display = "none";
     signedIn.style.display = "block";
     userStatus.textContent = "Signed in as " + (user.email || user.id);
   }
-
   async function refreshSession(){
     try{
       const { data: { session } } = await sb.auth.getSession();
-      if (session?.user){
-        showSignedIn(session.user);
-        return;
-      }
+      if (session?.user){ showSignedIn(session.user); return; }
       const { data } = await sb.auth.getUser();
-      if (data?.user){
-        showSignedIn(data.user);
-      } else {
-        showSignedOut("Not signed in.");
-      }
+      if (data?.user) showSignedIn(data.user);
+      else showSignedOut("Not signed in.");
     }catch(e){
       showSignedOut("Session check failed.");
       showBanner("err", "Session error: " + (e.message || e));
     }
   }
-
   btnLogin.addEventListener("click", async () => {
     try{
       const email = emailEl.value.trim();
       const password = passwordEl.value;
-      if (!email || !password){
-        showBanner("err", "Enter email and password.");
-        return;
-      }
+      if (!email || !password){ showBanner("err", "Enter email and password."); return; }
       authStatus.textContent = "Signing in…";
       const { error } = await sb.auth.signInWithPassword({ email, password });
       if (error) throw error;
@@ -179,24 +167,12 @@
       showBanner("err", "Login failed: " + (e.message || e));
     }
   });
-
   btnLogout.addEventListener("click", async () => {
-    try{
-      await sb.auth.signOut();
-      showSignedOut("Signed out.");
-      showBanner("ok", "Logged out.");
-    }catch(e){
-      showBanner("err", "Logout failed: " + (e.message || e));
-    }
+    try{ await sb.auth.signOut(); showSignedOut("Signed out."); showBanner("ok", "Logged out."); }
+    catch(e){ showBanner("err", "Logout failed: " + (e.message || e)); }
   });
-
   btnRefreshSession.addEventListener("click", refreshSession);
-
-  sb.auth.onAuthStateChange(async (_event, session) => {
-    if (session?.user) showSignedIn(session.user);
-    else showSignedOut("Not signed in.");
-  });
-
+  sb.auth.onAuthStateChange(async (_event, session) => { if (session?.user) showSignedIn(session.user); else showSignedOut("Not signed in."); });
   refreshSession();
 })();
 </script>
