@@ -1,4 +1,5 @@
-// navigation.js
+// Update: Add Inventory Report link to shared navigation menu.
+// Revision: 2026-03-15.v1
 (function(){
   function qs(id){ return document.getElementById(id); }
 
@@ -18,13 +19,14 @@
         ${user ? `
           <a href="capture.html">Capture</a>
           <a href="search.html">Search</a>
+          <a href="inventory_report.html">Report</a>
           <a href="container.html">Container</a>
           <a href="location_detail.html">Locations</a>
           <div class="muted">Signed in as<br>${user.email || "(email hidden)"}</div>
           <button id="navLogout" class="danger">Logout</button>
         ` : `
           <a href="capture.html">Sign In</a>
-          <div class="muted">Sign in to access Search/Container.</div>
+          <div class="muted">Sign in to access Search/Report/Container.</div>
         `}
       </div>
     `;
@@ -62,13 +64,11 @@
       if(!el) return;
 
       let user = null;
-      try { user = await getUser(); } catch(e){ /* ignore */ }
+      try { user = await getUser(); } catch(e){}
 
       el.innerHTML = buildNavHTML(user);
       attachMenuHandlers();
       await attachLogout();
-
-      // If logged out, hide nav links by removing them (already handled by buildNavHTML)
     }
   };
 })();
