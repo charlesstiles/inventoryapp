@@ -6,78 +6,92 @@
 <title>Inventory Search</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="config.js"></script>
+<script src="navigation.js"></script>
 <style>
-body{font-family:system-ui;background:#f6f6f6;margin:0;padding:20px}
-.card{background:white;padding:20px;border-radius:8px;max-width:900px;margin:auto}
-table{width:100%;border-collapse:collapse}
-td,th{padding:6px;border-bottom:1px solid #ddd}
+body{font-family:system-ui;background:#eef2f7;color:#17212b;margin:0;padding:20px}
+.page{max-width:980px;margin:auto}
+.card{background:#fff;padding:20px;border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,.08)}
+#navBar{margin-bottom:14px}
+label{display:block;margin-top:8px;font-weight:700;color:#1a2430}
+input{width:100%;padding:10px 12px;margin:6px 0;border:1px solid #b8c4d1;border-radius:8px;background:#fff;color:#17212b}
+.toolbar{display:flex;gap:10px;align-items:end;flex-wrap:wrap}
+button{padding:10px 14px;border:1px solid #8796a5;border-radius:8px;background:#f8fafc;color:#17212b;cursor:pointer}
+button:hover{background:#eef3f8}
+table{width:100%;border-collapse:collapse;margin-top:14px;background:#fff}
+td,th{padding:10px 8px;border-bottom:1px solid #d9e0e7;text-align:left;color:#17212b}
+th{background:#f3f6fa;font-weight:800}
+.muted{color:#445262;font-size:13px;margin-top:10px}
+.banner{display:none;padding:12px 14px;margin-bottom:12px;border-radius:8px;font-weight:600}
+.banner.err{background:#fce2e2;color:#7a1320}
 </style>
 </head>
 <body>
+<div class="page">
+  <div id="navBar"></div>
+  <div class="card">
+    <div id="banner" class="banner err"></div>
+    <h2 style="margin-top:0;color:#17212b">Search Inventory</h2>
 
-<div class="card">
+    <div class="toolbar">
+      <div style="min-width:280px;flex:1">
+        <label>Search description or container</label>
+        <input id="q" placeholder="hammer or TOTE0001"/>
+      </div>
+      <button id="go">Search</button>
+    </div>
 
-<h2>Search Inventory</h2>
+    <table id="tbl" style="display:none">
+      <thead>
+        <tr>
+          <th>Description</th>
+          <th>Container</th>
+          <th>Date</th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
 
-<input id="q" placeholder="Search description or container"/>
-<button id="go">Search</button>
-
-<table id="tbl" style="display:none">
-<thead>
-<tr>
-<th>Description</th>
-<th>Container</th>
-<th>Date</th>
-</tr>
-</thead>
-<tbody id="tbody"></tbody>
-</table>
-
+    <div class="muted" id="note"></div>
+  </div>
 </div>
 
 <script>
-
-const sb=getSupabase()
-
+const sb=getSupabase();
+const banner=document.getElementById("banner");
+function showError(msg){
+  banner.textContent=msg;
+  banner.style.display="block";
+  setTimeout(()=>banner.style.display="none",5000);
+}
 async function runSearch(){
+  const q=document.getElementById("q").value.trim();
+  if(!q) return;
+  const like="%"+q+"%";
+  const {data,error}=await sb.from("items")
+    .select("item_description,container_code,created_at")
+    .eq("is_active",true)
+    .or(`item_description.ilike.${like},container_code.ilike.${like}`)
+    .order("created_at",{ascending:false})
+    .limit(200);
+  if(error){ showError(error.message||String(error)); return; }
 
-const q=document.getElementById("q").value.trim()
-
-if(!q) return
-
-const like="%"+q+"%"
-
-const {data,error}=await sb
-.from("items")
-.select("item_description,container_code,created_at")
-.or(`item_description.ilike.${like},container_code.ilike.${like}`)
-.limit(200)
-
-if(error){
-alert(error.message)
-return
+  const tbody=document.getElementById("tbody");
+  tbody.innerHTML="";
+  (data||[]).forEach(r=>{
+    const tr=document.createElement("tr");
+    tr.innerHTML=`
+      <td>${(r.item_description||"").replace(/</g,"&lt;")}</td>
+      <td>${(r.container_code||"").replace(/</g,"&lt;")}</td>
+      <td>${r.created_at ? new Date(r.created_at).toLocaleString() : ""}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+  document.getElementById("tbl").style.display="table";
+  document.getElementById("note").textContent=`${(data||[]).length} result(s).`;
 }
-
-const tbody=document.getElementById("tbody")
-tbody.innerHTML=""
-
-data.forEach(r=>{
-const tr=document.createElement("tr")
-tr.innerHTML=`
-<td>${r.item_description||""}</td>
-<td>${r.container_code}</td>
-<td>${new Date(r.created_at).toLocaleString()}</td>
-`
-tbody.appendChild(tr)
-})
-
-document.getElementById("tbl").style.display="table"
-
-}
-
-document.getElementById("go").addEventListener("click",runSearch)
-
+document.getElementById("go").addEventListener("click", ()=>runSearch().catch(e=>showError(e.message||String(e))));
+document.getElementById("q").addEventListener("keydown", e=>{ if(e.key==="Enter") runSearch().catch(err=>showError(err.message||String(err))); });
+if(window.APP_NAV && APP_NAV.render){ APP_NAV.render("navBar"); }
 </script>
-
 </body>
 </html>
