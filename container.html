@@ -1,5 +1,5 @@
-<!doctype html>
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
@@ -15,21 +15,32 @@
     <div id="banner" class="banner" style="display:none;"></div>
 
     <div class="card">
-      <h1>Container</h1>
-
-      <label>Container Code</label>
-      <input id="containerCode" type="text" placeholder="e.g. TOTE0076" />
-
-      <div class="hr"></div>
-
+      <h1>Container Lookup</h1>
+      <label for="containerCode">Container Code</label>
       <div class="row">
-        <button class="btn disabled" id="btnShow" disabled style="max-width:220px;">Show Contents</button>
-        <button class="btn secondary" id="btnDetail" style="max-width:220px;">Open Container Detail</button>
+        <input id="containerCode" type="text" placeholder="e.g. TOTE-0014 or TOTE-00" />
+        <button class="btn secondary" id="btnFind" style="max-width:180px;">Find Containers</button>
       </div>
-      <div class="small-note">Show contents for a container, then use the green action buttons to edit items.</div>
+      <div class="small-note">Case is normalized automatically. Partial matches are supported.</div>
 
       <div class="hr"></div>
 
+      <h2 style="margin-top:0;">Matching Containers</h2>
+      <table class="table" id="matchTbl" style="display:none;">
+        <thead>
+          <tr>
+            <th>Container</th>
+            <th>Items</th>
+            <th>Last Updated</th>
+          </tr>
+        </thead>
+        <tbody id="matchBody"></tbody>
+      </table>
+      <div class="small-note" id="matchNote"></div>
+
+      <div class="hr"></div>
+
+      <h2 style="margin-top:0;">Exact Match Contents</h2>
       <table class="table" id="tbl" style="display:none;">
         <thead>
           <tr>
@@ -38,181 +49,193 @@
             <th>Qty</th>
             <th>User</th>
             <th>Created</th>
-            <th class="no-print"></th>
           </tr>
         </thead>
         <tbody id="tbody"></tbody>
       </table>
-
       <div class="small-note" id="note"></div>
     </div>
   </div>
 
-  <div class="confirm-overlay" id="confirmOverlay">
-    <div class="confirm-box">
-      <h3 id="confirmTitle">Confirm</h3>
-      <p id="confirmMessage"></p>
-      <div class="confirm-actions">
-        <button id="confirmCancel" class="btn secondary" style="max-width:120px;">Cancel</button>
-        <button id="confirmProceed" class="btn" style="max-width:120px;background:linear-gradient(180deg,#dc2626,#b91c1c);">Delete</button>
-      </div>
-    </div>
-  </div>
+  <script>
+    (function() {
+      const banner = document.getElementById("banner");
+      const containerCodeEl = document.getElementById("containerCode");
+      const btnFind = document.getElementById("btnFind");
+      const matchTbl = document.getElementById("matchTbl");
+      const matchBody = document.getElementById("matchBody");
+      const matchNote = document.getElementById("matchNote");
+      const tbl = document.getElementById("tbl");
+      const tbody = document.getElementById("tbody");
+      const note = document.getElementById("note");
 
-<script>
-(function(){
-  const banner = document.getElementById("banner");
-  const containerCodeEl = document.getElementById("containerCode");
-  const btnShow = document.getElementById("btnShow");
-  const btnDetail = document.getElementById("btnDetail");
-  const tbl = document.getElementById("tbl");
-  const tbody = document.getElementById("tbody");
-  const note = document.getElementById("note");
-  const confirmOverlay = document.getElementById("confirmOverlay");
-  const confirmTitle = document.getElementById("confirmTitle");
-  const confirmMessage = document.getElementById("confirmMessage");
-  const confirmCancel = document.getElementById("confirmCancel");
-  const confirmProceed = document.getElementById("confirmProceed");
-  let confirmResolve = null;
-
-  function currentReturnUrl(){
-    return window.location.href;
-  }
-  function itemDetailUrl(refUid){
-    return `item_detail.html?ref_uid=${encodeURIComponent(refUid)}&return=${encodeURIComponent(currentReturnUrl())}`;
-  }
-
-  confirmCancel.onclick = () => {
-    confirmOverlay.style.display = "none";
-    if (confirmResolve) confirmResolve(false);
-  };
-  confirmProceed.onclick = () => {
-    confirmOverlay.style.display = "none";
-    if (confirmResolve) confirmResolve(true);
-  };
-  function askConfirm(title, msg){
-    confirmTitle.textContent = title;
-    confirmMessage.textContent = msg;
-    confirmOverlay.style.display = "flex";
-    return new Promise(r => confirmResolve = r);
-  }
-
-  function showBanner(type, msg){
-    banner.className = "banner " + (type || "ok");
-    banner.textContent = msg;
-    banner.style.display = "block";
-    setTimeout(() => banner.style.display = "none", 4500);
-  }
-
-  async function requireAuth(){
-    await window.APP_NAV.render("navBar");
-    const sb = getSupabase();
-    const { data } = await sb.auth.getUser();
-    if (!data.user){
-      window.location.href = "index.html";
-      return null;
-    }
-    return data.user;
-  }
-
-  function updateButtonState(){
-    const val = containerCodeEl.value.trim();
-    const ok = val.length > 0;
-    btnShow.disabled = !ok;
-    btnShow.classList.toggle("disabled", !ok);
-  }
-
-  containerCodeEl.addEventListener("input", updateButtonState);
-
-  btnDetail.addEventListener("click", () => {
-    const code = containerCodeEl.value.trim();
-    if (!code) return;
-    window.location.href = `container_detail.html?container_code=${encodeURIComponent(code)}&return=${encodeURIComponent(currentReturnUrl())}`;
-  });
-
-  async function signedThumb(path){
-    if (!path) return null;
-    const sb = getSupabase();
-    const { data, error } = await sb.storage.from("item-photos").createSignedUrl(path, 60*30);
-    if (error) return null;
-    return data?.signedUrl || null;
-  }
-
-  function esc(s){ return (s||"").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
-
-  async function deleteItem(item){
-    const ok = await askConfirm("Delete item?", (item.item_description || "(no description)") + " from " + item.container_code);
-    if (!ok) return;
-    const sb = getSupabase();
-    const { error } = await sb.from("items").update({ is_active:false }).eq("ref_uid", item.ref_uid);
-    if (error) throw error;
-    showBanner("ok", "Item deleted.");
-    btnShow.click();
-  }
-
-  btnShow.addEventListener("click", async () => {
-    const user = await requireAuth();
-    if (!user) return;
-
-    const code = containerCodeEl.value.trim();
-    if (!code) return;
-
-    tbody.innerHTML = "";
-    tbl.style.display = "none";
-    note.textContent = "Loading…";
-
-    try{
-      const sb = getSupabase();
-      const { data: items, error } = await sb
-        .from("items")
-        .select("ref_uid, item_description, quantity, created_by, created_at, photo_path, container_code")
-        .eq("is_active", true)
-        .eq("container_code", code)
-        .order("created_at", { ascending:false })
-        .limit(400);
-
-      if (error) throw error;
-
-      if (!items?.length){
-        note.textContent = "No items found.";
-        return;
+      function currentReturnUrl() {
+        return window.location.href;
       }
 
-      tbl.style.display = "table";
-      note.textContent = `${items.length} item(s).`;
-
-      for (const it of items){
-        const tr = document.createElement("tr");
-        const thumbUrl = await signedThumb(it.photo_path);
-        tr.innerHTML = `
-          <td>${thumbUrl ? `<img class="thumb" src="${thumbUrl}" />` : ""}</td>
-          <td>${esc(it.item_description)}</td>
-          <td class="mono">${esc(String(it.quantity ?? 1))}</td>
-          <td class="mono">${esc(it.created_by || "")}</td>
-          <td class="mono">${esc(new Date(it.created_at).toLocaleString())}</td>
-          <td class="no-print">
-            <div class="action-stack">
-              <a class="icon-circle icon-edit" href="${itemDetailUrl(it.ref_uid)}" title="Edit item">✎</a>
-              <button class="icon-circle icon-delete" data-del-item="${esc(it.ref_uid)}" title="Delete item">✕</button>
-            </div>
-          </td>
-        `;
-        tbody.appendChild(tr);
-
-        tr.querySelector('[data-del-item="' + it.ref_uid + '"]').addEventListener("click", () => {
-          deleteItem(it).catch(e => showBanner("err", "Delete failed: " + (e.message || e)));
-        });
+      function normalizeCode(s) {
+        return String(s || "").trim().toUpperCase();
       }
 
-    }catch(e){
-      showBanner("err","Load failed: " + (e.message || e));
-      note.textContent = "";
-    }
-  });
+      function showBanner(type, msg) {
+        banner.className = "banner " + (type || "ok");
+        banner.textContent = msg;
+        banner.style.display = "block";
+        setTimeout(() => banner.style.display = "none", 4500);
+      }
 
-  requireAuth();
-  updateButtonState();
-})();
-</script>
+      function esc(s) {
+        return String(s || "").replace(/[&<>"']/g, m => ({
+          '&': '&amp;',
+          '<': '&lt;',
+          '>': '&gt;',
+          '"': '&quot;',
+          "'": '&#39;'
+        } [m]));
+      }
+
+      async function requireAuth() {
+        await window.APP_NAV.render("navBar");
+        const sb = getSupabase();
+        const { data } = await sb.auth.getUser();
+        if (!data.user) {
+          window.location.href = "index.html";
+          return null;
+        }
+        return data.user;
+      }
+
+      async function signedThumb(path) {
+        if (!path) return null;
+        const sb = getSupabase();
+        const { data, error } = await sb.storage.from("item-photos").createSignedUrl(path, 1800);
+        if (error) return null;
+        return data?.signedUrl || null;
+      }
+
+      async function loadExactContents(code) {
+        tbody.innerHTML = "";
+        tbl.style.display = "none";
+        note.textContent = "";
+        const sb = getSupabase();
+
+        const { data: items, error } = await sb.from("items")
+          .select("ref_uid, item_description, quantity, created_by, created_at, photo_path")
+          .eq("is_active", true)
+          .eq("container_code", code)
+          .order("created_at", { ascending: false })
+          .limit(400);
+
+        if (error) throw error;
+        if (!items?.length) {
+          note.textContent = "No active items in exact-match container.";
+          return;
+        }
+
+        tbl.style.display = "table";
+        note.textContent = `${items.length} item(s) in ${code}.`;
+
+        for (const it of items) {
+          const tr = document.createElement("tr");
+          const thumbUrl = await signedThumb(it.photo_path);
+          tr.innerHTML = `
+            <td>${thumbUrl ? `<img class="thumb" src="${thumbUrl}"/>` : ''}</td>
+            <td>
+              <a href="item_detail.html?ref_uid=${encodeURIComponent(it.ref_uid)}&return=${encodeURIComponent(currentReturnUrl())}">
+                ${esc(it.item_description || "(no description)")}
+              </a>
+            </td>
+            <td class="mono">${esc(String(it.quantity ?? 1))}</td>
+            <td class="mono">${esc(it.created_by || "")}</td>
+            <td class="mono">${esc(new Date(it.created_at).toLocaleString())}</td>
+          `;
+          tbody.appendChild(tr);
+        }
+      }
+
+      async function findContainers() {
+        const user = await requireAuth();
+        if (!user) return;
+
+        const q = normalizeCode(containerCodeEl.value);
+        containerCodeEl.value = q;
+
+        if (!q) {
+          showBanner("warn", "Enter a container code or prefix.");
+          return;
+        }
+
+        matchBody.innerHTML = "";
+        matchTbl.style.display = "none";
+        matchNote.textContent = "Searching…";
+        tbody.innerHTML = "";
+        tbl.style.display = "none";
+        note.textContent = "";
+
+        try {
+          const sb = getSupabase();
+          const like = `%${q}%`;
+
+          const { data: containers, error } = await sb.from("containers")
+            .select("container_id, ref_uid, container_code, updated_at, created_at")
+            .eq("is_active", true)
+            .ilike("container_code", like)
+            .order("container_code", { ascending: true })
+            .limit(200);
+
+          if (error) throw error;
+          if (!containers?.length) {
+            matchNote.textContent = "No matching containers.";
+            return;
+          }
+
+          const codes = containers.map(c => c.container_code);
+          const { data: items, error: itemErr } = await sb.from("items")
+            .select("container_code")
+            .eq("is_active", true)
+            .in("container_code", codes);
+
+          if (itemErr) throw itemErr;
+
+          const counts = {};
+          (items || []).forEach(i => counts[i.container_code] = (counts[i.container_code] || 0) + 1);
+
+          matchTbl.style.display = "table";
+          matchNote.textContent = `${containers.length} matching container(s). Click a container code to open detail.`;
+
+          for (const c of containers) {
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+              <td>
+                <a href="container_detail.html?container_code=${encodeURIComponent(c.container_code)}&return=${encodeURIComponent(currentReturnUrl())}">
+                  ${esc(c.container_code)}
+                </a>
+              </td>
+              <td class="mono">${counts[c.container_code] || 0}</td>
+              <td class="mono">${esc(new Date(c.updated_at || c.created_at).toLocaleString())}</td>
+            `;
+            matchBody.appendChild(tr);
+          }
+
+          const exact = containers.find(c => c.container_code === q);
+          if (exact) {
+            await loadExactContents(q);
+          } else {
+            note.textContent = "No exact-match container selected. Click a matching container code above to open detail.";
+          }
+        } catch (e) {
+          showBanner("err", "Lookup failed: " + (e.message || e));
+          matchNote.textContent = "";
+          note.textContent = "";
+        }
+      }
+
+      btnFind.addEventListener("click", findContainers);
+      containerCodeEl.addEventListener("keydown", e => {
+        if (e.key === "Enter") findContainers();
+      });
+      requireAuth();
+    })();
+  </script>
 </body>
 </html>
