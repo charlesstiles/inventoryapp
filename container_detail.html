@@ -57,10 +57,12 @@
     <div id="banner" class="banner" style="display:none;"></div>
 
     <div class="card">
-      <h1>Container Detail</h1>
+      <div class="row" style="justify-content:space-between;align-items:center;">
+        <h1 style="margin-bottom:0;">Container Detail</h1>
+        <a id="infoLink" class="btn secondary" style="max-width:140px;text-align:center;" href="info.html">ⓘ Info</a>
+      </div>
 
-      <div id="meta" class="detail-meta"></div>
-
+      
       <div class="detail-layout">
         <div>
           <label>Photo</label>
@@ -125,7 +127,6 @@
 <script>
 (async function(){
   const banner = document.getElementById("banner");
-  const meta = document.getElementById("meta");
   const codeEl = document.getElementById("code");
   const descEl = document.getElementById("desc");
   const locSel = document.getElementById("locationSel");
@@ -143,13 +144,6 @@
   const confirmCancel = document.getElementById("confirmCancel");
   const confirmProceed = document.getElementById("confirmProceed");
   let confirmResolve = null;
-
-  function currentReturnUrl(){
-    return window.location.href;
-  }
-  function itemDetailUrl(refUid){
-    return `item_detail.html?ref_uid=${encodeURIComponent(refUid)}&return=${encodeURIComponent(currentReturnUrl())}`;
-  }
 
   confirmCancel.onclick = () => {
     confirmOverlay.style.display = "none";
@@ -172,6 +166,13 @@
     banner.style.display = "block";
     setTimeout(() => banner.style.display = "none", 4500);
   }
+  function setInfoLink(obj){
+    const a = document.getElementById("infoLink");
+    if (!a) return;
+    const payload = encodeURIComponent(JSON.stringify(obj));
+    a.href = `info.html?title=${encodeURIComponent("Container Detail")}&data=${payload}`;
+  }
+
   function esc(s){ return String(s||"").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
   async function requireAuth(){
     await window.APP_NAV.render("navBar");
@@ -197,8 +198,7 @@
     const nh = Math.round(h*scale);
     const canvas = document.createElement("canvas");
     canvas.width = nw; canvas.height = nh;
-    const ctx = canvas.getContext("2d");
-    ctx.drawImage(img, 0, 0, nw, nh);
+    canvas.getContext("2d").drawImage(img, 0, 0, nw, nh);
     const blob = await new Promise((res) => canvas.toBlob(res, "image/jpeg", quality));
     URL.revokeObjectURL(url);
     return blob;
@@ -261,12 +261,16 @@
     updated_by: container.updated_by
   };
 
-  meta.innerHTML = `
-    <div class="meta-chip mono"><strong>ref_uid</strong><br>${esc(original.ref_uid)}</div>
-    <div class="meta-chip mono"><strong>uid</strong><br>${esc(original.container_id)}</div>
-    <div class="meta-chip mono"><strong>created</strong><br>${esc(new Date(original.created_at).toLocaleString())}<br>${esc(original.created_by||"")}</div>
-    ${original.updated_at ? `<div class="meta-chip mono"><strong>updated</strong><br>${esc(new Date(original.updated_at).toLocaleString())}<br>${esc(original.updated_by||"")}</div>` : ""}
-  `;
+  setInfoLink({
+    type: "container",
+    ref_uid: original.ref_uid,
+    uid: original.container_id,
+    container_code: original.container_code,
+    created_at: original.created_at,
+    created_by: original.created_by,
+    updated_at: original.updated_at,
+    updated_by: original.updated_by
+  });
 
   async function loadLocations(){
     const { data, error } = await sb
@@ -419,7 +423,7 @@
         <td class="mono">${esc(new Date(it.created_at).toLocaleString())}</td>
         <td class="no-print">
           <div class="action-stack">
-            <a class="icon-circle icon-edit" href="${itemDetailUrl(it.ref_uid)}" title="Edit item">✎</a>
+            <a class="icon-circle icon-edit" href="item_detail.html?ref_uid=${encodeURIComponent(it.ref_uid)}" title="Edit item">✎</a>
             <button class="icon-circle icon-delete" data-del-item="${esc(it.item_id)}" title="Delete item">✕</button>
           </div>
         </td>
@@ -520,8 +524,7 @@
       }
 
       showBanner("ok","Saved new version ✅");
-      const nextUrl = `container_detail.html?ref_uid=${encodeURIComponent(original.ref_uid)}${returnParam ? `&return=${encodeURIComponent(returnParam)}` : ""}`;
-      window.location.href = nextUrl;
+      window.location.href = `container_detail.html?ref_uid=${encodeURIComponent(original.ref_uid)}${returnParam ? `&return=${encodeURIComponent(returnParam)}` : ""}`;
     }catch(e){
       showBanner("err","Save failed: " + (e.message || e));
     }
