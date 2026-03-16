@@ -1,5 +1,5 @@
-<!doctype html>
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
@@ -20,27 +20,23 @@
 
     <div id="banner" class="banner" style="display:none;"></div>
 
+    <!-- Auth State: Signed Out -->
     <div id="signedOut" class="card" style="display:none;">
       <h2 style="margin-top:0;">Sign In</h2>
       <div id="authStatus" class="status">Checking session…</div>
-
-      <label>Email</label>
+      <label for="email">Email</label>
       <input id="email" type="email" placeholder="you@example.com" />
-      <label>Password</label>
+      <label for="password">Password</label>
       <input id="password" type="password" placeholder="••••••••" />
-
       <div class="row" style="margin-top:10px;">
         <button class="btn" id="btnLogin" style="max-width:220px;">Sign In</button>
-        <a class="btn secondary" href="capture.html" style="max-width:220px;display:flex;align-items:center;justify-content:center;">Open Capture</a>
       </div>
-
-      <div class="small-note" style="margin-top:12px;">Use this page as the main entry point to the application.</div>
     </div>
 
+    <!-- Auth State: Signed In -->
     <div id="signedIn" class="card" style="display:none;">
       <h2 style="margin-top:0;">Dashboard</h2>
       <div id="userStatus" class="status"></div>
-
       <div class="grid">
         <a class="app-card" href="capture.html">
           <h3>Capture Items</h3>
@@ -52,18 +48,17 @@
         </a>
         <a class="app-card" href="inventory_report.html">
           <h3>Inventory Report</h3>
-          <p>Review contents by container, print, edit, and delete test data.</p>
+          <p>Review contents by container, print, edit, and delete data.</p>
         </a>
         <a class="app-card" href="container.html">
           <h3>Containers</h3>
-          <p>Open container tools and detail workflows.</p>
+          <p>Search matching containers and open details.</p>
         </a>
         <a class="app-card" href="location_detail.html">
           <h3>Locations</h3>
           <p>Open, add, and edit location records.</p>
         </a>
       </div>
-
       <div class="row" style="margin-top:14px;">
         <button class="btn secondary" id="btnRefreshSession" style="max-width:220px;">Refresh Session</button>
         <button class="btn secondary" id="btnLogout" style="max-width:220px;">Logout</button>
@@ -71,85 +66,108 @@
     </div>
   </div>
 
-<script>
-(function(){
-  const sb = getSupabase();
-  const banner = document.getElementById("banner");
-  const signedOut = document.getElementById("signedOut");
-  const signedIn = document.getElementById("signedIn");
-  const authStatus = document.getElementById("authStatus");
-  const userStatus = document.getElementById("userStatus");
-  const btnLogin = document.getElementById("btnLogin");
-  const btnLogout = document.getElementById("btnLogout");
-  const btnRefreshSession = document.getElementById("btnRefreshSession");
-  const emailEl = document.getElementById("email");
-  const passwordEl = document.getElementById("password");
+  <script>
+    (function() {
+      const sb = getSupabase();
+      const banner = document.getElementById("banner");
+      const signedOut = document.getElementById("signedOut");
+      const signedIn = document.getElementById("signedIn");
+      const authStatus = document.getElementById("authStatus");
+      const userStatus = document.getElementById("userStatus");
+      const emailEl = document.getElementById("email");
+      const passwordEl = document.getElementById("password");
 
-  function showBanner(type, msg){
-    banner.className = "banner " + (type || "ok");
-    banner.textContent = msg;
-    banner.style.display = "block";
-    setTimeout(() => banner.style.display = "none", 5000);
-  }
-  function showSignedOut(msg){
-    signedOut.style.display = "block";
-    signedIn.style.display = "none";
-    authStatus.textContent = msg || "Not signed in.";
-  }
-  function showSignedIn(user){
-    signedOut.style.display = "none";
-    signedIn.style.display = "block";
-    userStatus.textContent = "Signed in as " + (user.email || user.id);
-  }
-  async function refreshSession(){
-    try{
-      await APP_NAV.render("navBar");
-      const { data: { session } } = await sb.auth.getSession();
-      if (session?.user){ showSignedIn(session.user); return; }
-      const { data } = await sb.auth.getUser();
-      if (data?.user) showSignedIn(data.user);
-      else showSignedOut("Not signed in.");
-    }catch(e){
-      showSignedOut("Session check failed.");
-      showBanner("err", "Session error: " + (e.message || e));
-    }
-  }
-  btnLogin.addEventListener("click", async () => {
-    try{
-      const email = emailEl.value.trim();
-      const password = passwordEl.value;
-      if (!email || !password){ showBanner("err", "Enter email and password."); return; }
-      authStatus.textContent = "Signing in…";
-      const { error } = await sb.auth.signInWithPassword({ email, password });
-      if (error) throw error;
-      const { data } = await sb.auth.getUser();
-      if (!data?.user) throw new Error("Login succeeded but no user session was returned.");
-      showSignedIn(data.user);
-      await APP_NAV.render("navBar");
-      showBanner("ok", "Login successful.");
-    }catch(e){
-      showSignedOut("Sign in failed.");
-      showBanner("err", "Login failed: " + (e.message || e));
-    }
-  });
-  btnLogout.addEventListener("click", async () => {
-    try{
-      await sb.auth.signOut();
-      await APP_NAV.render("navBar");
-      showSignedOut("Signed out.");
-      showBanner("ok", "Logged out.");
-    }catch(e){
-      showBanner("err", "Logout failed: " + (e.message || e));
-    }
-  });
-  btnRefreshSession.addEventListener("click", refreshSession);
-  sb.auth.onAuthStateChange(async (_event, session) => {
-    await APP_NAV.render("navBar");
-    if (session?.user) showSignedIn(session.user);
-    else showSignedOut("Not signed in.");
-  });
-  refreshSession();
-})();
-</script>
+      function showBanner(type, msg) {
+        banner.className = "banner " + (type || "ok");
+        banner.textContent = msg;
+        banner.style.display = "block";
+        setTimeout(() => (banner.style.display = "none"), 5000);
+      }
+
+      function showSignedOut(msg) {
+        signedOut.style.display = "block";
+        signedIn.style.display = "none";
+        authStatus.textContent = msg || "Not signed in.";
+      }
+
+      function showSignedIn(user) {
+        signedOut.style.display = "none";
+        signedIn.style.display = "block";
+        userStatus.textContent = "Signed in as " + (user.email || user.id);
+      }
+
+      async function refreshSession() {
+        try {
+          await APP_NAV.render("navBar");
+          const { data: { session } } = await sb.auth.getSession();
+          
+          if (session?.user) {
+            showSignedIn(session.user);
+            return;
+          }
+          
+          const { data } = await sb.auth.getUser();
+          if (data?.user) {
+            showSignedIn(data.user);
+          } else {
+            showSignedOut("Not signed in.");
+          }
+        } catch (e) {
+          showSignedOut("Session check failed.");
+          showBanner("err", "Session error: " + (e.message || e));
+        }
+      }
+
+      document.getElementById("btnLogin").addEventListener("click", async () => {
+        try {
+          const email = emailEl.value.trim();
+          const password = passwordEl.value;
+          
+          if (!email || !password) {
+            showBanner("err", "Enter email and password.");
+            return;
+          }
+          
+          authStatus.textContent = "Signing in…";
+          const { error } = await sb.auth.signInWithPassword({ email, password });
+          if (error) throw error;
+          
+          const { data } = await sb.auth.getUser();
+          if (!data?.user) throw new Error("Login succeeded but no user session was returned.");
+          
+          showSignedIn(data.user);
+          await APP_NAV.render("navBar");
+          showBanner("ok", "Login successful.");
+        } catch (e) {
+          showSignedOut("Sign in failed.");
+          showBanner("err", "Login failed: " + (e.message || e));
+        }
+      });
+
+      document.getElementById("btnLogout").addEventListener("click", async () => {
+        try {
+          await sb.auth.signOut();
+          await APP_NAV.render("navBar");
+          showSignedOut("Signed out.");
+          showBanner("ok", "Logged out.");
+        } catch (e) {
+          showBanner("err", "Logout failed: " + (e.message || e));
+        }
+      });
+
+      document.getElementById("btnRefreshSession").addEventListener("click", refreshSession);
+
+      sb.auth.onAuthStateChange(async (_event, session) => {
+        await APP_NAV.render("navBar");
+        if (session?.user) {
+          showSignedIn(session.user);
+        } else {
+          showSignedOut("Not signed in.");
+        }
+      });
+
+      refreshSession();
+    })();
+  </script>
 </body>
 </html>
