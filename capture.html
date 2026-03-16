@@ -10,89 +10,22 @@
   <script src="navigation.js"></script>
   <script src="https://unpkg.com/html5-qrcode"></script>
   <style>
-    /* Update: Switch scanner to QR using html5-qrcode, keep manual entry fallback.
-       Revision: 2026-03-15.v7 */
     #authStatus{ display:none !important; }
-
-    .modalBackdrop{
-      position:fixed !important;
-      inset:0 !important;
-      background:rgba(0,0,0,.72) !important;
-      display:none;
-      align-items:center !important;
-      justify-content:center !important;
-      z-index:9999 !important;
-      padding:16px !important;
-    }
-    .modal{
-      width:min(760px,96vw) !important;
-      max-height:92vh !important;
-      overflow:auto !important;
-      background:var(--card2,#0d1628) !important;
-      border:1px solid var(--border,#22314f) !important;
-      border-radius:16px !important;
-      box-shadow:0 12px 32px rgba(0,0,0,.35) !important;
-    }
-    .modalHeader{
-      display:flex;
-      justify-content:space-between;
-      align-items:center;
-      gap:10px;
-      padding:14px 16px !important;
-      border-bottom:1px solid rgba(255,255,255,.08);
-    }
+    .modalBackdrop{ position:fixed !important; inset:0 !important; background:rgba(0,0,0,.72) !important; display:none; align-items:center !important; justify-content:center !important; z-index:9999 !important; padding:16px !important; }
+    .modal{ width:min(760px,96vw) !important; max-height:92vh !important; overflow:auto !important; background:var(--card2,#0d1628) !important; border:1px solid var(--border,#22314f) !important; border-radius:16px !important; box-shadow:0 12px 32px rgba(0,0,0,.35) !important; }
+    .modalHeader{ display:flex; justify-content:space-between; align-items:center; gap:10px; padding:14px 16px !important; border-bottom:1px solid rgba(255,255,255,.08); }
     .modalBody{ padding:14px 16px 18px !important; }
-    .videoBox{
-      position:relative !important;
-      width:100% !important;
-      height:340px !important;
-      min-height:340px !important;
-      overflow:hidden !important;
-      background:#000 !important;
-      border-radius:14px !important;
-      border:1px solid rgba(255,255,255,.12) !important;
-    }
-    #scanner{
-      width:100% !important;
-      height:100% !important;
-      min-height:340px !important;
-    }
-    #scanner video,
-    #scanner canvas{
-      width:100% !important;
-      height:100% !important;
-      object-fit:cover !important;
-      display:block !important;
-    }
-    .scanHint{
-      position:absolute !important;
-      top:22% !important;
-      left:22% !important;
-      width:56% !important;
-      height:56% !important;
-      border:2px solid rgba(255,255,255,.85) !important;
-      border-radius:12px !important;
-      box-shadow:0 0 0 2000px rgba(0,0,0,.25) inset !important;
-      pointer-events:none !important;
-      z-index:5 !important;
-    }
-    .scanSectionNote{
-      padding-left:4px;
-      margin-top:10px;
-    }
-    @media (max-width:640px){
-      .videoBox{
-        height:300px !important;
-        min-height:300px !important;
-      }
-      #scanner{ min-height:300px !important; }
-    }
+    .videoBox{ position:relative !important; width:100% !important; height:340px !important; min-height:340px !important; overflow:hidden !important; background:#000 !important; border-radius:14px !important; border:1px solid rgba(255,255,255,.12) !important; }
+    #scanner{ width:100% !important; height:100% !important; min-height:340px !important; }
+    #scanner video, #scanner canvas{ width:100% !important; height:100% !important; object-fit:cover !important; display:block !important; }
+    .scanHint{ position:absolute !important; top:22% !important; left:22% !important; width:56% !important; height:56% !important; border:2px solid rgba(255,255,255,.85) !important; border-radius:12px !important; box-shadow:0 0 0 2000px rgba(0,0,0,.25) inset !important; pointer-events:none !important; z-index:5 !important; }
+    .scanSectionNote{ padding-left:4px; margin-top:10px; }
+    @media (max-width:640px){ .videoBox{ height:300px !important; min-height:300px !important; } #scanner{ min-height:300px !important; } }
   </style>
 </head>
 <body>
   <div class="page">
     <div id="navBar"></div>
-
     <div id="banner" class="banner" style="display:none;"></div>
 
     <div class="card">
@@ -120,8 +53,9 @@
         </div>
         <div class="small-note" id="containerSetNote"></div>
 
-        <label>Photo (required)</label>
+        <label>Photo (optional)</label>
         <input id="photo" type="file" accept="image/*" capture="environment" />
+        <div class="small-note">Provide a photo or a description. Photos are compressed automatically before upload.</div>
 
         <label>Description</label>
         <textarea id="desc" placeholder="Item description"></textarea>
@@ -163,7 +97,6 @@
   const loginBox = document.getElementById("loginBox");
   const captureBox = document.getElementById("captureBox");
   const authStatusEl = document.getElementById("authStatus");
-
   const btnLogin = document.getElementById("btnLogin");
   const btnSave = document.getElementById("btnSave");
   const btnScanContainer = document.getElementById("btnScanContainer");
@@ -207,18 +140,6 @@
     setTimeout(() => banner.style.display = "none", 6500);
   }
 
-  window.addEventListener("error", (evt) => {
-    const msg = evt?.message || "Unknown script error";
-    setAuthStatus("Auth: error");
-    showBanner("err", "Script error: " + msg);
-  });
-
-  window.addEventListener("unhandledrejection", (evt) => {
-    const msg = evt?.reason?.message || String(evt?.reason || "Unknown promise rejection");
-    setAuthStatus("Auth: error");
-    showBanner("err", "Unhandled: " + msg);
-  });
-
   function normalizeScannedCode(raw){
     return String(raw || "").trim().toUpperCase();
   }
@@ -239,9 +160,9 @@
     setSaveEnabled(false);
     setAuthStatus("Auth: checking...");
     await renderNavSafe(1200);
-
-    const { data: { session } } = await sb.auth.getSession();
-    if (session?.user){
+    const sessionResult = await sb.auth.getSession();
+    const session = sessionResult.data.session;
+    if (session && session.user){
       loginBox.style.display = "none";
       captureBox.style.display = "block";
       setAuthStatus("Auth: OK");
@@ -249,7 +170,6 @@
       focusContainerField();
       return session.user;
     }
-
     loginBox.style.display = "block";
     captureBox.style.display = "none";
     setAuthStatus("Auth: sign in required");
@@ -265,8 +185,8 @@
         return;
       }
       setAuthStatus("Auth: signing in...");
-      const { error } = await sb.auth.signInWithPassword({ email, password });
-      if (error) throw error;
+      const result = await sb.auth.signInWithPassword({ email, password });
+      if (result.error) throw result.error;
       showBanner("ok", "Login successful.");
       await requireAuth();
     }catch(e){
@@ -276,28 +196,63 @@
   }
 
   async function ensureContainer(code){
-    let {data,error}=await sb.from("containers")
-      .select("container_code")
-      .eq("container_code",code)
-      .eq("is_active",true)
-      .maybeSingle();
-    if(error) throw error;
-    if(data) return;
-    const { error: insErr } = await sb.from("containers").insert([{container_code:code}]);
-    if(insErr) throw insErr;
+    const lookup = await sb.from("containers").select("container_code").eq("container_code", code).eq("is_active", true).maybeSingle();
+    if (lookup.error) throw lookup.error;
+    if (lookup.data) return;
+    const insert = await sb.from("containers").insert([{container_code: code}]);
+    if (insert.error) throw insert.error;
+  }
+
+  async function compressImageToJpeg(file, maxDim, quality){
+    if (!file) return null;
+    const imageUrl = URL.createObjectURL(file);
+    try{
+      const img = new Image();
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+        img.src = imageUrl;
+      });
+      const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+      const width = Math.max(1, Math.round(img.width * scale));
+      const height = Math.max(1, Math.round(img.height * scale));
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, width, height);
+      const blob = await new Promise((resolve) => {
+        canvas.toBlob(resolve, "image/jpeg", quality);
+      });
+      return blob || file;
+    } finally {
+      URL.revokeObjectURL(imageUrl);
+    }
+  }
+
+  async function uploadWithRetry(bucket, path, fileOrBlob, options, tries){
+    let lastError = null;
+    for(let i=0; i<tries; i++){
+      const result = await sb.storage.from(bucket).upload(path, fileOrBlob, options);
+      if (!result.error) return;
+      lastError = result.error;
+      await new Promise(r => setTimeout(r, 500));
+    }
+    throw lastError || new Error("Upload failed.");
   }
 
   async function saveItem(){
     try{
-      const { data: { session } } = await sb.auth.getSession();
-      if (!session?.user){
+      const sessionResult = await sb.auth.getSession();
+      const session = sessionResult.data.session;
+      if (!session || !session.user){
         showBanner("err", "Please sign in first.");
         await requireAuth();
         return;
       }
 
       const container = String(containerCodeEl.value || "").trim().toUpperCase();
-      const photo = photoEl.files?.[0];
+      const photo = (photoEl.files && photoEl.files[0]) ? photoEl.files[0] : null;
       const desc = descEl.value.trim();
       const qty = Number(qtyEl.value || 1);
 
@@ -306,12 +261,8 @@
         focusContainerField();
         return;
       }
-      if (!photo){
-        showBanner("err", "Photo required.");
-        return;
-      }
-      if (!desc){
-        showBanner("err", "Description required.");
+      if (!photo && !desc){
+        showBanner("err", "Provide either a photo or a description.");
         return;
       }
 
@@ -321,35 +272,35 @@
       const ref_uid = crypto.randomUUID();
       const item_id = crypto.randomUUID();
 
-      const photoPath = `items/${ref_uid}/${item_id}.jpg`;
-      const { error: upErr } = await sb.storage
-        .from("item-photos")
-        .upload(photoPath, photo, { upsert: true });
+      let photoPath = null;
+      if (photo){
+        const compressed = await compressImageToJpeg(photo, 900, 0.72);
+        photoPath = "items/" + ref_uid + "/" + item_id + ".jpg";
+        await uploadWithRetry("item-photos", photoPath, compressed, {
+          upsert: true,
+          contentType: "image/jpeg"
+        }, 2);
+      }
 
-      if (upErr) throw upErr;
-
-      const { error: insErr } = await sb
-        .from("items")
-        .insert([{
-          item_id,
-          ref_uid,
-          container_code: container,
-          item_description: desc,
-          quantity: qty,
-          photo_path: photoPath,
-          is_active: true,
-          created_by: session.user.id,
-          updated_by: session.user.id
-        }]);
-
-      if (insErr) throw insErr;
+      const insert = await sb.from("items").insert([{
+        item_id: item_id,
+        ref_uid: ref_uid,
+        container_code: container,
+        item_description: desc,
+        quantity: qty,
+        photo_path: photoPath,
+        is_active: true,
+        created_by: session.user.id,
+        updated_by: session.user.id
+      }]);
+      if (insert.error) throw insert.error;
 
       descEl.value = "";
       photoEl.value = "";
       qtyEl.value = "1";
-      containerSetNote.textContent = `Container set: ${container}`;
+      containerSetNote.textContent = "Container set: " + container;
       focusContainerField();
-      showBanner("ok", `Saved item to ${container}`);
+      showBanner("ok", "Saved item to " + container);
     }catch(e){
       showBanner("err", "Save failed: " + (e.message || e));
     }finally{
@@ -378,28 +329,21 @@
     const scannerTarget = document.getElementById("scanner");
     scannerTarget.innerHTML = "";
     showBanner("ok", "Camera opened. Aim the QR code inside the white square.");
-
     try{
       qrScanner = new Html5Qrcode("scanner");
       await qrScanner.start(
         { facingMode: "environment" },
-        {
-          fps: 10,
-          qrbox: { width: 250, height: 250 },
-          aspectRatio: 1.777
-        },
+        { fps: 10, qrbox: { width: 250, height: 250 }, aspectRatio: 1.777 },
         (decodedText) => {
           const normalized = normalizeScannedCode(decodedText);
           if (!normalized) return;
           containerCodeEl.value = normalized;
-          containerSetNote.textContent = `Container set: ${normalized}`;
-          showBanner("ok", `Scanned: ${normalized}`);
+          containerSetNote.textContent = "Container set: " + normalized;
+          showBanner("ok", "Scanned: " + normalized);
           closeScan();
           focusContainerField();
         },
-        () => {
-          // ignore scan misses
-        }
+        () => {}
       );
     } catch (err){
       showBanner("err", "Scanner init failed: " + (err.message || err));
@@ -407,20 +351,21 @@
     }
   }
 
-  btnLogin?.addEventListener("click", login);
-  btnSave?.addEventListener("click", saveItem);
-  btnScanContainer?.addEventListener("click", () => openScan());
-  btnCloseScan?.addEventListener("click", () => closeScan());
+  if (btnLogin) btnLogin.addEventListener("click", login);
+  if (btnSave) btnSave.addEventListener("click", saveItem);
+  if (btnScanContainer) btnScanContainer.addEventListener("click", function(){ openScan(); });
+  if (btnCloseScan) btnCloseScan.addEventListener("click", function(){ closeScan(); });
 
-  containerCodeEl?.addEventListener("keydown", (e) => {
-    if (e.key === "Enter"){
-      e.preventDefault();
-      photoEl.focus();
-    }
-  });
+  if (containerCodeEl){
+    containerCodeEl.addEventListener("keydown", function(e){
+      if (e.key === "Enter"){
+        e.preventDefault();
+        photoEl.focus();
+      }
+    });
+  }
 
   document.addEventListener("DOMContentLoaded", focusContainerField);
-
   requireAuth();
 })();
 </script>
