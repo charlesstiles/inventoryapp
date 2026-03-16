@@ -57,10 +57,12 @@
     <div id="banner" class="banner" style="display:none;"></div>
 
     <div class="card">
-      <h1>Item Detail</h1>
+      <div class="row" style="justify-content:space-between;align-items:center;">
+        <h1 style="margin-bottom:0;">Item Detail</h1>
+        <a id="infoLink" class="btn secondary" style="max-width:140px;text-align:center;" href="info.html">ⓘ Info</a>
+      </div>
 
-      <div id="meta" class="detail-meta"></div>
-
+      
       <div class="detail-layout">
         <div>
           <label>Photo</label>
@@ -112,7 +114,6 @@
 <script>
 (async function(){
   const banner = document.getElementById("banner");
-  const meta = document.getElementById("meta");
   const descEl = document.getElementById("desc");
   const qtyEl = document.getElementById("qty");
   const containerCodeEl = document.getElementById("containerCode");
@@ -131,6 +132,13 @@
     banner.style.display = "block";
     setTimeout(() => banner.style.display = "none", 4500);
   }
+  function setInfoLink(obj){
+    const a = document.getElementById("infoLink");
+    if (!a) return;
+    const payload = encodeURIComponent(JSON.stringify(obj));
+    a.href = `info.html?title=${encodeURIComponent("Item Detail")}&data=${payload}`;
+  }
+
   function esc(s){ return String(s||"").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
   async function requireAuth(){
     await window.APP_NAV.render("navBar");
@@ -220,12 +228,16 @@
     updated_by: item.updated_by
   };
 
-  meta.innerHTML = `
-    <div class="meta-chip mono"><strong>ref_uid</strong><br>${esc(original.ref_uid)}</div>
-    <div class="meta-chip mono"><strong>uid</strong><br>${esc(original.item_id)}</div>
-    <div class="meta-chip mono"><strong>created</strong><br>${esc(new Date(original.created_at).toLocaleString())}<br>${esc(original.created_by||"")}</div>
-    ${original.updated_at ? `<div class="meta-chip mono"><strong>updated</strong><br>${esc(new Date(original.updated_at).toLocaleString())}<br>${esc(original.updated_by||"")}</div>` : ""}
-  `;
+  setInfoLink({
+    type: "item",
+    ref_uid: original.ref_uid,
+    uid: original.item_id,
+    container_code: original.container_code,
+    created_at: original.created_at,
+    created_by: original.created_by,
+    updated_at: original.updated_at,
+    updated_by: original.updated_by
+  });
 
   descEl.value = original.item_description;
   qtyEl.value = String(original.quantity);
