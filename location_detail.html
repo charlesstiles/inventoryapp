@@ -64,9 +64,11 @@
     </div>
 
     <div class="card" id="detailCard" style="display:none;">
-      <h1>Location Detail</h1>
+      <div class="row" style="justify-content:space-between;align-items:center;">
+        <h1 style="margin-bottom:0;">Location Detail</h1>
+        <a id="infoLink" class="btn secondary" style="max-width:140px;text-align:center;" href="info.html">ⓘ Info</a>
+      </div>
 
-      <div id="meta" class="detail-meta"></div>
 
       <div class="row">
         <div>
@@ -147,12 +149,15 @@
     }
 
     function renderMeta(row){
-      const meta = document.getElementById("meta");
-      meta.innerHTML = `
-        <div class="meta-chip mono"><strong>location_code</strong><br>${row.location_code || ""}</div>
-        <div class="meta-chip mono"><strong>location_id</strong><br>${row.location_id || ""}</div>
-        ${row.created_at ? `<div class="meta-chip mono"><strong>created</strong><br>${new Date(row.created_at).toLocaleString()}</div>` : ""}
-      `;
+      const a = document.getElementById("infoLink");
+      if (!a) return;
+      const payload = encodeURIComponent(JSON.stringify({
+        type: "location",
+        location_code: row.location_code || "",
+        location_id: row.location_id || "",
+        created_at: row.created_at || ""
+      }));
+      a.href = `info.html?title=${encodeURIComponent("Location Detail")}&data=${payload}`;
     }
 
     async function showPicker() {
