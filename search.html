@@ -1,5 +1,5 @@
-<!doctype html>
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
@@ -16,11 +16,10 @@
 
     <div class="card">
       <h1>Search Inventory</h1>
-
-      <label>Search description or container</label>
+      <label for="q">Search description or container</label>
       <div class="row">
-        <input id="q" type="text" placeholder="hammer or TOTE0001" />
-        <button class="btn secondary" id="btnGo" style="max-width:160px;">Search</button>
+        <input id="q" type="text" placeholder="e.g. hammer or TOTE-0010" />
+        <button class="btn secondary" id="btnGo" style="max-width:180px;">Search</button>
       </div>
 
       <table class="table" id="tbl" style="display:none; margin-top:14px;">
@@ -36,98 +35,131 @@
         <tbody id="tbody"></tbody>
       </table>
 
-      <div class="small-note" id="note" style="margin-top:12px;"></div>
+      <div class="small-note" id="note"></div>
     </div>
   </div>
 
-<script>
-(function(){
-  const banner = document.getElementById("banner");
-  const qEl = document.getElementById("q");
-  const btnGo = document.getElementById("btnGo");
-  const tbl = document.getElementById("tbl");
-  const tbody = document.getElementById("tbody");
-  const note = document.getElementById("note");
+  <script>
+    (function() {
+      const banner = document.getElementById("banner");
+      const qEl = document.getElementById("q");
+      const btnGo = document.getElementById("btnGo");
+      const tbl = document.getElementById("tbl");
+      const tbody = document.getElementById("tbody");
+      const note = document.getElementById("note");
 
-  function showBanner(type, msg){
-    banner.className = "banner " + (type || "ok");
-    banner.textContent = msg;
-    banner.style.display = "block";
-    setTimeout(() => banner.style.display = "none", 5000);
-  }
-  function esc(s){
-    return String(s||"").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
-  }
-
-  async function requireAuth(){
-    await APP_NAV.render("navBar");
-    const sb = getSupabase();
-    const { data } = await sb.auth.getUser();
-    if (!data.user){
-      window.location.href = "index.html";
-      return null;
-    }
-    return data.user;
-  }
-
-  async function signedThumb(path){
-    if (!path) return null;
-    const sb = getSupabase();
-    const { data, error } = await sb.storage.from("item-photos").createSignedUrl(path, 60 * 30);
-    if (error) return null;
-    return data?.signedUrl || null;
-  }
-
-  async function runSearch(){
-    const q = qEl.value.trim();
-    if (!q){ showBanner("warn", "Enter a search term."); return; }
-    note.textContent = "Searching…";
-    tbody.innerHTML = "";
-    tbl.style.display = "none";
-
-    try{
-      const sb = getSupabase();
-      const like = `%${q}%`;
-      const { data: items, error } = await sb
-        .from("items")
-        .select("item_id, ref_uid, container_code, item_description, created_by, created_at, photo_path, is_active")
-        .eq("is_active", true)
-        .or(`item_description.ilike.${like},container_code.ilike.${like}`)
-        .order("created_at", { ascending:false })
-        .limit(200);
-      if (error) throw error;
-
-      if (!items?.length){
-        note.textContent = "No results.";
-        return;
+      function currentReturnUrl() {
+        return window.location.href;
       }
 
-      tbl.style.display = "table";
-      note.textContent = `${items.length} result(s).`;
-
-      for (const it of items){
-        const thumbUrl = await signedThumb(it.photo_path);
-        const tr = document.createElement("tr");
-        tr.innerHTML = `
-          <td>${thumbUrl ? `<img class="thumb" src="${thumbUrl}" />` : ""}</td>
-          <td>${esc(it.item_description || "")}</td>
-          <td class="mono">${esc(it.container_code || "")}</td>
-          <td class="mono">${esc(it.created_by || "")}</td>
-          <td class="mono">${esc(it.created_at ? new Date(it.created_at).toLocaleString() : "")}</td>
-        `;
-        tbody.appendChild(tr);
+      function showBanner(type, msg) {
+        banner.className = "banner " + (type || "ok");
+        banner.textContent = msg;
+        banner.style.display = "block";
+        setTimeout(() => (banner.style.display = "none"), 4500);
       }
-    }catch(e){
-      note.textContent = "";
-      showBanner("err", "Search error: " + (e.message || e));
-    }
-  }
 
-  btnGo.addEventListener("click", runSearch);
-  qEl.addEventListener("keydown", (e)=>{ if(e.key==="Enter") runSearch(); });
+      function esc(s) {
+        return String(s || "").replace(/[&<>"']/g, (m) => ({
+          '&': '&amp;',
+          '<': '&lt;',
+          '>': '&gt;',
+          '"': '&quot;',
+          "'": '&#39;'
+        }[m]));
+      }
 
-  requireAuth();
-})();
-</script>
+      async function requireAuth() {
+        await window.APP_NAV.render("navBar");
+        const sb = getSupabase();
+        const { data } = await sb.auth.getUser();
+        if (!data.user) {
+          window.location.href = "index.html";
+          return null;
+        }
+        return data.user;
+      }
+
+      async function signedThumb(path) {
+        if (!path) return null;
+        const sb = getSupabase();
+        const { data, error } = await sb.storage
+          .from("item-photos")
+          .createSignedUrl(path, 1800);
+        if (error) return null;
+        return data?.signedUrl || null;
+      }
+
+      async function runSearch() {
+        const user = await requireAuth();
+        if (!user) return;
+
+        const q = qEl.value.trim();
+        if (!q) {
+          showBanner("warn", "Enter a search term.");
+          return;
+        }
+
+        note.textContent = "Searching…";
+        tbody.innerHTML = "";
+        tbl.style.display = "none";
+
+        try {
+          const sb = getSupabase();
+          const like = `%${q}%`;
+
+          const { data: items, error } = await sb
+            .from("items")
+            .select("item_id, ref_uid, container_code, item_description, created_by, created_at, photo_path")
+            .eq("is_active", true)
+            .or(`item_description.ilike.${like},container_code.ilike.${like}`)
+            .order("created_at", { ascending: false })
+            .limit(200);
+
+          if (error) throw error;
+
+          if (!items?.length) {
+            note.textContent = "No results.";
+            return;
+          }
+
+          tbl.style.display = "table";
+          note.textContent = `${items.length} result(s).`;
+
+          for (const it of items) {
+            const tr = document.createElement("tr");
+            const thumbUrl = await signedThumb(it.photo_path);
+
+            tr.innerHTML = `
+              <td>${thumbUrl ? `<img class="thumb" src="${thumbUrl}"/>` : ''}</td>
+              <td>
+                <a href="item_detail.html?ref_uid=${encodeURIComponent(it.ref_uid)}&return=${encodeURIComponent(currentReturnUrl())}">
+                  ${esc(it.item_description || "(no description)")}
+                </a>
+              </td>
+              <td class="mono">
+                <a href="container_detail.html?container_code=${encodeURIComponent(it.container_code)}&return=${encodeURIComponent(currentReturnUrl())}">
+                  ${esc(it.container_code)}
+                </a>
+              </td>
+              <td class="mono">${esc(it.created_by || "")}</td>
+              <td class="mono">${esc(new Date(it.created_at).toLocaleString())}</td>
+            `;
+            tbody.appendChild(tr);
+          }
+        } catch (e) {
+          showBanner("err", "Search error: " + (e.message || e));
+          note.textContent = "";
+        }
+      }
+
+      btnGo.addEventListener("click", runSearch);
+      qEl.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") runSearch();
+      });
+
+      requireAuth();
+    })();
+  </script>
 </body>
 </html>
