@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Inventory Capture</title>
   <link rel="stylesheet" href="styles.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -10,6 +10,22 @@
   <script src="navigation.js"></script>
   <script src="https://unpkg.com/html5-qrcode"></script>
   <style>
+    html, body{
+      width:100%;
+      max-width:100%;
+      overflow-x:hidden;
+    }
+    .page{
+      width:100% !important;
+      max-width:720px !important;
+      margin:0 auto !important;
+      padding-left:14px !important;
+      padding-right:14px !important;
+      box-sizing:border-box !important;
+    }
+    input, textarea, select, button{
+      font-size:16px !important;
+    }
     #authStatus{ display:none !important; }
     .modalBackdrop{ position:fixed !important; inset:0 !important; background:rgba(0,0,0,.72) !important; display:none; align-items:center !important; justify-content:center !important; z-index:9999 !important; padding:16px !important; }
     .modal{ width:min(760px,96vw) !important; max-height:92vh !important; overflow:auto !important; background:var(--card2,#0d1628) !important; border:1px solid var(--border,#22314f) !important; border-radius:16px !important; box-shadow:0 12px 32px rgba(0,0,0,.35) !important; }
@@ -19,8 +35,11 @@
     #scanner{ width:100% !important; height:100% !important; min-height:340px !important; }
     #scanner video, #scanner canvas{ width:100% !important; height:100% !important; object-fit:cover !important; display:block !important; }
     .scanHint{ position:absolute !important; top:22% !important; left:22% !important; width:56% !important; height:56% !important; border:2px solid rgba(255,255,255,.85) !important; border-radius:12px !important; box-shadow:0 0 0 2000px rgba(0,0,0,.25) inset !important; pointer-events:none !important; z-index:5 !important; }
-    .scanSectionNote{ padding-left:4px; margin-top:10px; }
-    @media (max-width:640px){ .videoBox{ height:300px !important; min-height:300px !important; } #scanner{ min-height:300px !important; } }
+    .scanSectionNote{ padding-left:8px; margin-top:10px; }
+    @media (max-width:640px){
+      .videoBox{ height:300px !important; min-height:300px !important; }
+      #scanner{ min-height:300px !important; }
+    }
   </style>
 </head>
 <body>
@@ -144,12 +163,12 @@
     return String(raw || "").trim().toUpperCase();
   }
 
-  async function renderNavSafe(timeoutMs = 1200){
+  async function renderNavSafe(timeoutMs){
     try{
       if (!window.APP_NAV || typeof window.APP_NAV.render !== "function") return;
       await Promise.race([
         window.APP_NAV.render("navBar"),
-        new Promise((res) => setTimeout(res, timeoutMs))
+        new Promise((res) => setTimeout(res, timeoutMs || 1200))
       ]);
     }catch(e){
       console.warn("Nav render failed:", e);
@@ -343,7 +362,7 @@
           closeScan();
           focusContainerField();
         },
-        () => {}
+        function(){ }
       );
     } catch (err){
       showBanner("err", "Scanner init failed: " + (err.message || err));
