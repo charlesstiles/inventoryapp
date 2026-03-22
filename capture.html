@@ -105,7 +105,7 @@
           <div class="scanHint"></div>
           <div id="scanner"></div>
         </div>
-        <div class="small-note scanSectionNote">Tip: hold steady and center the QR code inside the white square.</div>
+        <div class="small-note scanSectionNote">Tip: hold steady about 6–10 inches away and center the QR code inside the white square.</div>
       </div>
     </div>
   </div>
@@ -342,30 +342,48 @@
 
   async function openScan(){
     if (scanActive) return;
+
     scanActive = true;
     scanModal.style.display = "flex";
     document.body.style.overflow = "hidden";
+
     const scannerTarget = document.getElementById("scanner");
     scannerTarget.innerHTML = "";
-    showBanner("ok", "Camera opened. Aim the QR code inside the white square.");
+
+    showBanner("ok", "Camera ready. Hold steady about 6–10 inches away.");
+
     try{
       qrScanner = new Html5Qrcode("scanner");
+      let scanned = false;
+
       await qrScanner.start(
-        { facingMode: "environment" },
-        { fps: 10, qrbox: { width: 250, height: 250 }, aspectRatio: 1.777 },
+        { facingMode: { exact: "environment" } },
+        {
+          fps: 8,
+          qrbox: function(viewfinderWidth, viewfinderHeight){
+            const size = Math.min(viewfinderWidth, viewfinderHeight) * 0.5;
+            return { width: size, height: size };
+          },
+          formatsToSupport: [ Html5QrcodeSupportedFormats.QR_CODE ]
+        },
         (decodedText) => {
+          if (scanned) return;
+          scanned = true;
+
           const normalized = normalizeScannedCode(decodedText);
           if (!normalized) return;
+
           containerCodeEl.value = normalized;
           containerSetNote.textContent = "Container set: " + normalized;
           showBanner("ok", "Scanned: " + normalized);
+
           closeScan();
           focusContainerField();
         },
         function(){ }
       );
     } catch (err){
-      showBanner("err", "Scanner init failed: " + (err.message || err));
+      showBanner("err", "Scanner failed: " + (err.message || err));
       await closeScan();
     }
   }
