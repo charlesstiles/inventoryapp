@@ -34,7 +34,7 @@
     .videoBox{ position:relative !important; width:100% !important; height:340px !important; min-height:340px !important; overflow:hidden !important; background:#000 !important; border-radius:14px !important; border:1px solid rgba(255,255,255,.12) !important; }
     #scanner{ width:100% !important; height:100% !important; min-height:340px !important; }
     #scanner video, #scanner canvas{ width:100% !important; height:100% !important; object-fit:cover !important; display:block !important; }
-    .scanHint{ position:absolute !important; top:22% !important; left:22% !important; width:56% !important; height:56% !important; border:2px solid rgba(255,255,255,.85) !important; border-radius:12px !important; box-shadow:0 0 0 2000px rgba(0,0,0,.25) inset !important; pointer-events:none !important; z-index:5 !important; }
+    .scanHint{ position:absolute !important; top:28% !important; left:28% !important; width:44% !important; height:44% !important; border:2px solid rgba(255,255,255,.85) !important; border-radius:12px !important; box-shadow:0 0 0 2000px rgba(0,0,0,.25) inset !important; pointer-events:none !important; z-index:5 !important; }
     .scanSectionNote{ padding-left:8px; margin-top:10px; }
     @media (max-width:640px){
       .videoBox{ height:300px !important; min-height:300px !important; }
@@ -105,7 +105,7 @@
           <div class="scanHint"></div>
           <div id="scanner"></div>
         </div>
-        <div class="small-note scanSectionNote">Tip: hold steady about 6–10 inches away and center the QR code inside the white square.</div>
+        <div class="small-note scanSectionNote">Tip: hold steady about 6–10 inches away and center the QR code inside the smaller white square.</div>
       </div>
     </div>
   </div>
@@ -357,11 +357,12 @@
       let scanned = false;
 
       await qrScanner.start(
-        { facingMode: { exact: "environment" } },
+        { facingMode: "environment" },
         {
           fps: 8,
+          disableFlip: true,
           qrbox: function(viewfinderWidth, viewfinderHeight){
-            const size = Math.min(viewfinderWidth, viewfinderHeight) * 0.5;
+            const size = Math.min(viewfinderWidth, viewfinderHeight) * 0.42;
             return { width: size, height: size };
           },
           formatsToSupport: [ Html5QrcodeSupportedFormats.QR_CODE ]
